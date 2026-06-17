@@ -504,7 +504,7 @@ let liffUserId = null;
 // LIFF初期化
 async function initLiff() {
   try {
-    await liff.init({ liffId: 'LIFF_ID_HERE' });
+    await liff.init({ liffId: '2010429232-TSaTmCB8' });
     if (liff.isLoggedIn()) {
       const profile = await liff.getProfile();
       liffUserId = profile.userId;
