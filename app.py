@@ -1,4 +1,5 @@
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
+from flask_cors import CORS
 import json
 import hmac
 import hashlib
@@ -8,6 +9,7 @@ import os
 import threading
 
 app = Flask(__name__)
+CORS(app)
 
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
@@ -24,39 +26,8 @@ def verify_signature(body, signature):
     ).digest()
     return base64.b64encode(hash).decode('utf-8') == signature
 
-def process_message(user_id, user_message):
+def send_line_push(user_id, message):
     try:
-        conversation_id = conversation_ids.get(user_id, '')
-
-        print(f'Difyに送信開始: {user_message}')
-
-        dify_response = requests.post(
-            DIFY_API_URL,
-            headers={
-                'Authorization': f'Bearer {DIFY_API_KEY}',
-                'Content-Type': 'application/json'
-            },
-            json={
-                'inputs': {},
-                'query': user_message,
-                'response_mode': 'blocking',
-                'conversation_id': conversation_id,
-                'user': user_id
-            },
-            timeout=30
-        )
-
-        print(f'Difyステータス: {dify_response.status_code}')
-        print(f'Dify返答: {dify_response.text[:200]}')
-
-        if dify_response.status_code == 200:
-            dify_data = dify_response.json()
-            ai_message = dify_data.get('answer', 'すみません、もう一度送ってね！')
-            conversation_ids[user_id] = dify_data.get('conversation_id', '')
-        else:
-            ai_message = 'すみません、もう一度送ってね！'
-
-        # Push APIで送信（reply tokenが不要）
         line_response = requests.post(
             'https://api.line.me/v2/bot/message/push',
             headers={
@@ -65,14 +36,99 @@ def process_message(user_id, user_message):
             },
             json={
                 'to': user_id,
-                'messages': [{'type': 'text', 'text': ai_message}]
+                'messages': [{'type': 'text', 'text': message}]
             }
         )
         print(f'LINE Pushステータス: {line_response.status_code}')
         print(f'LINE Push内容: {line_response.text}')
+    except Exception as e:
+        print(f'LINE送信エラー: {e}')
 
+def ask_dify(user_id, message, conversation_id=''):
+    dify_response = requests.post(
+        DIFY_API_URL,
+        headers={
+            'Authorization': f'Bearer {DIFY_API_KEY}',
+            'Content-Type': 'application/json'
+        },
+        json={
+            'inputs': {},
+            'query': message,
+            'response_mode': 'blocking',
+            'conversation_id': conversation_id,
+            'user': user_id
+        },
+        timeout=60
+    )
+    print(f'Difyステータス: {dify_response.status_code}')
+    if dify_response.status_code == 200:
+        data = dify_response.json()
+        return data.get('answer', ''), data.get('conversation_id', '')
+    else:
+        print(f'Dify失敗: {dify_response.text[:300]}')
+        return None, None
+
+def process_message(user_id, user_message):
+    try:
+        conversation_id = conversation_ids.get(user_id, '')
+        answer, new_conv_id = ask_dify(user_id, user_message, conversation_id)
+        if answer:
+            conversation_ids[user_id] = new_conv_id
+            send_line_push(user_id, answer)
+        else:
+            send_line_push(user_id, 'すみません、もう一度送ってね！')
     except Exception as e:
         print(f'エラー発生: {e}')
+
+def process_registration(data):
+    """LIFFフォームから送られたデータを処理する"""
+    try:
+        user_id = data.get('user_id')
+
+        # フォームの回答を1つのメッセージにまとめてDifyに送る
+        summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
+
+性別：{data.get('gender')}
+年齢：{data.get('age')}歳
+身長：{data.get('height')}cm
+体重：{data.get('weight')}kg
+目標：{data.get('goal')}
+目標体重：{data.get('goal_weight')}kg
+期限：{data.get('deadline')}
+開始日：{data.get('start_date')}
+週の頻度：{data.get('gym_frequency')}
+筋トレ歴：{data.get('training_history')}
+1回の所要時間：{data.get('training_duration')}
+トレーニング時間帯：{data.get('training_time')}
+1日の歩数：{data.get('daily_steps')}"""
+
+        print(f'登録データをDifyに送信: {user_id}')
+
+        # 新しい会話として開始（conversation_idは空）
+        answer, new_conv_id = ask_dify(user_id, summary_message, '')
+
+        if answer:
+            conversation_ids[user_id] = new_conv_id
+            send_line_push(user_id, answer)
+        else:
+            send_line_push(user_id, 'プランの作成に失敗しました。もう一度LINEで「はじめまして」と送ってみてね。')
+
+    except Exception as e:
+        print(f'登録処理エラー: {e}')
+
+@app.route('/liff_register', methods=['POST'])
+def liff_register():
+    data = request.get_json()
+    print(f'LIFF登録データ受信: {data}')
+
+    if not data or not data.get('user_id'):
+        return jsonify({'error': 'user_id is required'}), 400
+
+    # 別スレッドで処理（フォームをすぐ完了画面に進めるため）
+    thread = threading.Thread(target=process_registration, args=(data,))
+    thread.start()
+
+    return jsonify({'status': 'ok'}), 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -84,7 +140,6 @@ def webhook():
         abort(400)
 
     data = json.loads(body)
-    print(f'受信データあり')
 
     for event in data.get('events', []):
         if event['type'] == 'message' and event['message']['type'] == 'text':
@@ -93,7 +148,6 @@ def webhook():
 
             print(f'メッセージ受信: {user_message}')
 
-            # 別スレッドで処理（タイムアウト回避）
             thread = threading.Thread(
                 target=process_message,
                 args=(user_id, user_message)
