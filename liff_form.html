@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Your Coach - 初回登録</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    background: #0f0f13;
+    color: #ffffff;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ヘッダー */
+  .header {
+    padding: 24px 24px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: #4FC3F7;
+    letter-spacing: 0.05em;
+  }
+
+  /* プログレスバー */
+  .progress-wrap {
+    padding: 20px 24px 0;
+  }
+
+  .progress-bar {
+    height: 3px;
+    background: #1e1e2e;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4FC3F7, #7C4DFF);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .progress-text {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666688;
+    text-align: right;
+  }
+
+  /* ステップコンテナ */
+  .steps-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .step {
+    display: none;
+    padding: 40px 24px 120px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .step.active {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .step-number {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4FC3F7;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .step-question {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.5;
+    margin-bottom: 8px;
+    color: #ffffff;
+  }
+
+  .step-hint {
+    font-size: 13px;
+    color: #666688;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  /* 選択肢ボタン */
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .option-btn {
+    width: 100%;
+    padding: 16px 20px;
+    background: #1a1a2e;
+    border: 1.5px solid #2a2a4a;
+    border-radius: 12px;
+    color: #ccccdd;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .option-btn:active {
+    transform: scale(0.98);
+  }
+
+  .option-btn.selected {
+    background: #0d2137;
+    border-color: #4FC3F7;
+    color: #4FC3F7;
+  }
+
+  .option-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #2a2a4a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  .option-btn.selected .option-num {
+    background: #4FC3F7;
+    color: #0f0f13;
+  }
+
+  /* テキスト入力 */
+  .text-input {
+    width: 100%;
+    padding: 18px 20px;
+    background: #1a1a2e;
+    border: 1.5px solid #2a2a4a;
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 700;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+
+  .text-input:focus {
+    border-color: #4FC3F7;
+  }
+
+  .text-input::placeholder {
+    color: #444466;
+    font-weight: 400;
+    font-size: 16px;
+  }
+
+  .unit {
+    font-size: 14px;
+    color: #666688;
+    margin-top: 10px;
+    padding-left: 4px;
+  }
+
+  /* 次へボタン */
+  .btn-next {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 24px 36px;
+    background: linear-gradient(to top, #0f0f13 60%, transparent);
+  }
+
+  .btn-next button {
+    width: 100%;
+    padding: 18px;
+    background: #4FC3F7;
+    color: #0f0f13;
+    font-size: 16px;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-next button:disabled {
+    background: #1e1e2e;
+    color: #444466;
+    cursor: not-allowed;
+  }
+
+  .btn-next button:not(:disabled):active {
+    transform: scale(0.98);
+    background: #38b2e8;
+  }
+
+  /* 完了画面 */
+  .complete-screen {
+    display: none;
+    padding: 80px 24px 40px;
+    text-align: center;
+  }
+
+  .complete-screen.active {
+    display: block;
+  }
+
+  .complete-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #4FC3F7, #7C4DFF);
+    border-radius: 50%;
+    margin: 0 auto 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+
+  .complete-title {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  .complete-text {
+    font-size: 15px;
+    color: #888899;
+    line-height: 1.7;
+    margin-bottom: 40px;
+  }
+
+  .complete-btn {
+    width: 100%;
+    padding: 18px;
+    background: #4FC3F7;
+    color: #0f0f13;
+    font-size: 16px;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+
+  /* ローディング */
+  .loading {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,15,19,0.9);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    z-index: 100;
+  }
+
+  .loading.active {
+    display: flex;
+  }
+
+  .spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid #1e1e2e;
+    border-top-color: #4FC3F7;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .loading-text {
+    font-size: 14px;
+    color: #666688;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">YOUR COACH</div>
+</div>
+
+<div class="progress-wrap">
+  <div class="progress-bar">
+    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+  </div>
+  <div class="progress-text" id="progressText">1 / 13</div>
+</div>
+
+<div class="steps-container" id="stepsContainer">
+
+  <!-- STEP 1: 性別 -->
+  <div class="step active" data-step="1" data-type="choice">
+    <div class="step-number">STEP 01</div>
+    <div class="step-question">性別を教えて</div>
+    <div class="step-hint">トレーニングと食事プランに反映するよ</div>
+    <div class="options">
+      <button class="option-btn" data-value="男性"><span class="option-num">①</span>男性</button>
+      <button class="option-btn" data-value="女性"><span class="option-num">②</span>女性</button>
+      <button class="option-btn" data-value="その他"><span class="option-num">③</span>その他</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: 年齢 -->
+  <div class="step" data-step="2" data-type="number">
+    <div class="step-number">STEP 02</div>
+    <div class="step-question">年齢を教えて</div>
+    <div class="step-hint">基礎代謝の計算に使うよ</div>
+    <input class="text-input" type="number" placeholder="例：28" min="15" max="80" id="input-age">
+    <div class="unit">歳</div>
+  </div>
+
+  <!-- STEP 3: 身長 -->
+  <div class="step" data-step="3" data-type="number">
+    <div class="step-number">STEP 03</div>
+    <div class="step-question">身長は？</div>
+    <div class="step-hint">基礎代謝の計算に使うよ</div>
+    <input class="text-input" type="number" placeholder="例：172" min="140" max="220" id="input-height">
+    <div class="unit">cm</div>
+  </div>
+
+  <!-- STEP 4: 体重 -->
+  <div class="step" data-step="4" data-type="number">
+    <div class="step-number">STEP 04</div>
+    <div class="step-question">今の体重は？</div>
+    <div class="step-hint">数字だけでいいよ</div>
+    <input class="text-input" type="number" placeholder="例：70.5" step="0.1" min="30" max="200" id="input-weight">
+    <div class="unit">kg</div>
+  </div>
+
+  <!-- STEP 5: 目標 -->
+  <div class="step" data-step="5" data-type="choice">
+    <div class="step-number">STEP 05</div>
+    <div class="step-question">目標は何？</div>
+    <div class="step-hint">一番近いものを選んでね</div>
+    <div class="options">
+      <button class="option-btn" data-value="絞りたい"><span class="option-num">①</span>絞りたい（体脂肪を落としたい）</button>
+      <button class="option-btn" data-value="増やしたい"><span class="option-num">②</span>増やしたい（筋肉をつけたい）</button>
+      <button class="option-btn" data-value="両方"><span class="option-num">③</span>両方やりたい</button>
+    </div>
+  </div>
+
+  <!-- STEP 6: 目標体重 -->
+  <div class="step" data-step="6" data-type="number">
+    <div class="step-number">STEP 06</div>
+    <div class="step-question">目標体重は？</div>
+    <div class="step-hint">なんとなくの数字でいいよ</div>
+    <input class="text-input" type="number" placeholder="例：65.0" step="0.1" min="30" max="200" id="input-goal-weight">
+    <div class="unit">kg</div>
+  </div>
+
+  <!-- STEP 7: 期限 -->
+  <div class="step" data-step="7" data-type="choice">
+    <div class="step-number">STEP 07</div>
+    <div class="step-question">いつまでに達成したい？</div>
+    <div class="step-hint">プランのペースに使うよ</div>
+    <div class="options">
+      <button class="option-btn" data-value="1ヶ月以内"><span class="option-num">①</span>1ヶ月以内</button>
+      <button class="option-btn" data-value="3ヶ月以内"><span class="option-num">②</span>3ヶ月以内</button>
+      <button class="option-btn" data-value="6ヶ月以内"><span class="option-num">③</span>6ヶ月以内</button>
+      <button class="option-btn" data-value="それ以上"><span class="option-num">④</span>それ以上</button>
+    </div>
+  </div>
+
+  <!-- STEP 8: 開始日 -->
+  <div class="step" data-step="8" data-type="choice">
+    <div class="step-number">STEP 08</div>
+    <div class="step-question">いつから始める？</div>
+    <div class="options">
+      <button class="option-btn" data-value="今日から"><span class="option-num">①</span>今日から</button>
+      <button class="option-btn" data-value="明日から"><span class="option-num">②</span>明日から</button>
+      <button class="option-btn" data-value="今週中に"><span class="option-num">③</span>今週中に</button>
+      <button class="option-btn" data-value="来週から"><span class="option-num">④</span>来週から</button>
+    </div>
+  </div>
+
+  <!-- STEP 9: 頻度 -->
+  <div class="step" data-step="9" data-type="choice">
+    <div class="step-number">STEP 09</div>
+    <div class="step-question">週何回ジムに行けそう？</div>
+    <div class="options">
+      <button class="option-btn" data-value="週1回"><span class="option-num">①</span>週1回</button>
+      <button class="option-btn" data-value="週2回"><span class="option-num">②</span>週2回</button>
+      <button class="option-btn" data-value="週3回"><span class="option-num">③</span>週3回</button>
+      <button class="option-btn" data-value="週4回以上"><span class="option-num">④</span>週4回以上</button>
+    </div>
+  </div>
+
+  <!-- STEP 10: 筋トレ歴 -->
+  <div class="step" data-step="10" data-type="choice">
+    <div class="step-number">STEP 10</div>
+    <div class="step-question">筋トレ歴はどのくらい？</div>
+    <div class="options">
+      <button class="option-btn" data-value="始めたばかり"><span class="option-num">①</span>始めたばかり（6ヶ月未満）</button>
+      <button class="option-btn" data-value="1〜3年"><span class="option-num">②</span>1〜3年</button>
+      <button class="option-btn" data-value="3年以上"><span class="option-num">③</span>3年以上</button>
+    </div>
+  </div>
+
+  <!-- STEP 11: 所要時間 -->
+  <div class="step" data-step="11" data-type="choice">
+    <div class="step-number">STEP 11</div>
+    <div class="step-question">1回のトレーニングに<br>かけられる時間は？</div>
+    <div class="options">
+      <button class="option-btn" data-value="30分"><span class="option-num">①</span>30分</button>
+      <button class="option-btn" data-value="45分"><span class="option-num">②</span>45分</button>
+      <button class="option-btn" data-value="60分"><span class="option-num">③</span>60分</button>
+      <button class="option-btn" data-value="90分以上"><span class="option-num">④</span>90分以上</button>
+    </div>
+  </div>
+
+  <!-- STEP 12: 時間帯 -->
+  <div class="step" data-step="12" data-type="choice">
+    <div class="step-number">STEP 12</div>
+    <div class="step-question">トレーニングする時間帯は？</div>
+    <div class="step-hint">食事スケジュールに反映するよ</div>
+    <div class="options">
+      <button class="option-btn" data-value="朝（4〜9時）"><span class="option-num">①</span>朝（4〜9時）</button>
+      <button class="option-btn" data-value="昼（10〜14時）"><span class="option-num">②</span>昼（10〜14時）</button>
+      <button class="option-btn" data-value="夕方（15〜19時）"><span class="option-num">③</span>夕方（15〜19時）</button>
+      <button class="option-btn" data-value="夜（20時以降）"><span class="option-num">④</span>夜（20時以降）</button>
+    </div>
+  </div>
+
+  <!-- STEP 13: 歩数 -->
+  <div class="step" data-step="13" data-type="choice">
+    <div class="step-number">STEP 13</div>
+    <div class="step-question">普段1日何歩くらい歩く？</div>
+    <div class="step-hint">スマホのヘルスケアアプリで確認できるよ。消費カロリーの計算に使うよ</div>
+    <div class="options">
+      <button class="option-btn" data-value="2000歩未満"><span class="option-num">①</span>2,000歩未満</button>
+      <button class="option-btn" data-value="2000〜5000歩"><span class="option-num">②</span>2,000〜5,000歩</button>
+      <button class="option-btn" data-value="5000〜8000歩"><span class="option-num">③</span>5,000〜8,000歩</button>
+      <button class="option-btn" data-value="8000〜12000歩"><span class="option-num">④</span>8,000〜12,000歩</button>
+      <button class="option-btn" data-value="12000歩以上"><span class="option-num">⑤</span>12,000歩以上</button>
+      <button class="option-btn" data-value="わからない"><span class="option-num">⑥</span>わからない</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 完了画面 -->
+<div class="complete-screen" id="completeScreen">
+  <div class="complete-icon">✓</div>
+  <div class="complete-title">登録完了！</div>
+  <div class="complete-text">
+    あなた専用のプランを<br>
+    今すぐLINEに送るね。<br>
+    少しだけ待っててね。
+  </div>
+  <button class="complete-btn" onclick="closeLiff()">LINEに戻る</button>
+</div>
+
+<!-- 次へボタン -->
+<div class="btn-next" id="btnNext">
+  <button id="nextBtn" disabled onclick="nextStep()">次へ</button>
+</div>
+
+<!-- ローディング -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">プランを作成中...</div>
+</div>
+
+<script>
+const TOTAL_STEPS = 13;
+const SERVER_URL = 'https://your-coach.onrender.com/liff_register';
+
+let currentStep = 1;
+let answers = {};
+let liffUserId = null;
+
+// LIFF初期化
+async function initLiff() {
+  try {
+    await liff.init({ liffId: 'LIFF_ID_HERE' });
+    if (liff.isLoggedIn()) {
+      const profile = await liff.getProfile();
+      liffUserId = profile.userId;
+    } else {
+      liff.login();
+    }
+  } catch (e) {
+    console.log('LIFF初期化エラー:', e);
+    liffUserId = 'test_user';
+  }
+}
+
+// プログレス更新
+function updateProgress() {
+  const pct = ((currentStep - 1) / TOTAL_STEPS) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = currentStep + ' / ' + TOTAL_STEPS;
+}
+
+// 次のステップへ
+function nextStep() {
+  const step = document.querySelector('.step.active');
+  const type = step.dataset.type;
+
+  if (type === 'choice') {
+    const selected = step.querySelector('.option-btn.selected');
+    if (!selected) return;
+    answers['step' + currentStep] = selected.dataset.value;
+  } else if (type === 'number') {
+    const input = step.querySelector('.text-input');
+    if (!input.value) return;
+    answers['step' + currentStep] = input.value;
+  }
+
+  if (currentStep >= TOTAL_STEPS) {
+    submitForm();
+    return;
+  }
+
+  step.classList.remove('active');
+  currentStep++;
+  const nextStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  nextStepEl.classList.add('active');
+  updateProgress();
+  document.getElementById('nextBtn').disabled = true;
+  document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
+
+  const input = nextStepEl.querySelector('.text-input');
+  if (input) setTimeout(() => input.focus(), 300);
+}
+
+// 選択肢クリック
+document.querySelectorAll('.option-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const parent = this.closest('.options');
+    parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+    document.getElementById('nextBtn').disabled = false;
+  });
+});
+
+// テキスト入力
+document.querySelectorAll('.text-input').forEach(input => {
+  input.addEventListener('input', function() {
+    document.getElementById('nextBtn').disabled = !this.value;
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && this.value) nextStep();
+  });
+});
+
+// フォーム送信
+async function submitForm() {
+  document.getElementById('loading').classList.add('active');
+  document.getElementById('btnNext').style.display = 'none';
+
+  const data = {
+    user_id: liffUserId,
+    gender: answers['step1'],
+    age: answers['step2'],
+    height: answers['step3'],
+    weight: answers['step4'],
+    goal: answers['step5'],
+    goal_weight: answers['step6'],
+    deadline: answers['step7'],
+    start_date: answers['step8'],
+    gym_frequency: answers['step9'],
+    training_history: answers['step10'],
+    training_duration: answers['step11'],
+    training_time: answers['step12'],
+    daily_steps: answers['step13']
+  };
+
+  try {
+    const res = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    document.getElementById('loading').classList.remove('active');
+    document.getElementById('stepsContainer').style.display = 'none';
+    document.getElementById('completeScreen').classList.add('active');
+  } catch (e) {
+    document.getElementById('loading').classList.remove('active');
+    alert('送信に失敗しました。もう一度試してね。');
+    document.getElementById('btnNext').style.display = 'block';
+  }
+}
+
+// LINEに戻る
+function closeLiff() {
+  try {
+    liff.closeWindow();
+  } catch(e) {
+    window.close();
+  }
+}
+
+// 初期化
+initLiff();
+updateProgress();
+</script>
+</body>
+</html>
