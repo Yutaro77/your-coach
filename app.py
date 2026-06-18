@@ -14,6 +14,7 @@ CORS(app)
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 DIFY_API_KEY = os.environ.get('DIFY_API_KEY')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages'
 
 conversation_ids = {}
@@ -40,7 +41,6 @@ def send_line_push(user_id, message):
             }
         )
         print(f'LINE Pushステータス: {line_response.status_code}')
-        print(f'LINE Push内容: {line_response.text}')
     except Exception as e:
         print(f'LINE送信エラー: {e}')
 
@@ -80,12 +80,119 @@ def process_message(user_id, user_message):
     except Exception as e:
         print(f'エラー発生: {e}')
 
+def get_line_image(message_id):
+    """LINEから画像データを取得してbase64に変換する"""
+    try:
+        res = requests.get(
+            f'https://api-data.line.me/v2/bot/message/{message_id}/content',
+            headers={'Authorization': f'Bearer {LINE_CHANNEL_ACCESS_TOKEN}'},
+            timeout=30
+        )
+        if res.status_code == 200:
+            return base64.b64encode(res.content).decode('utf-8')
+        else:
+            print(f'画像取得失敗: {res.status_code}')
+            return None
+    except Exception as e:
+        print(f'画像取得エラー: {e}')
+        return None
+
+def analyze_food_image(image_base64, user_id):
+    """Claude APIで食事写真を分析する"""
+    try:
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'claude-sonnet-4-5',
+                'max_tokens': 1000,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'image',
+                                'source': {
+                                    'type': 'base64',
+                                    'media_type': 'image/jpeg',
+                                    'data': image_base64
+                                }
+                            },
+                            {
+                                'type': 'text',
+                                'text': """この食事の写真を分析して、以下の形式で日本語で答えてください。
+絵文字は使わず、親しみやすい口調で。
+
+---
+【食事内容】
+（何が写っているか簡潔に）
+
+【栄養素の目安】
+カロリー：約○kcal
+タンパク質：約○g
+脂質：約○g
+炭水化物：約○g
+
+【コーチからひとこと】
+（筋トレ目線で短く一言。褒めるか、改善点を優しく）
+---
+
+写真が食事でない場合は「食事の写真を送ってね！」とだけ返してください。"""
+                            }
+                        ]
+                    }
+                ]
+            },
+            timeout=30
+        )
+        print(f'Claude APIステータス: {response.status_code}')
+        if response.status_code == 200:
+            data = response.json()
+            return data['content'][0]['text']
+        else:
+            print(f'Claude API失敗: {response.text[:300]}')
+            return None
+    except Exception as e:
+        print(f'画像分析エラー: {e}')
+        return None
+
+def process_image_message(user_id, message_id):
+    """画像メッセージを処理する"""
+    try:
+        send_line_push(user_id, '写真を確認してるよ、少し待ってね！')
+
+        image_base64 = get_line_image(message_id)
+        if not image_base64:
+            send_line_push(user_id, '画像の取得に失敗しました。もう一度送ってね！')
+            return
+
+        result = analyze_food_image(image_base64, user_id)
+        if result:
+            send_line_push(user_id, result)
+        else:
+            send_line_push(user_id, '分析に失敗しました。もう一度送ってね！')
+
+    except Exception as e:
+        print(f'画像処理エラー: {e}')
+        send_line_push(user_id, 'エラーが起きました。もう一度送ってね！')
+
+def link_rich_menu(user_id, rich_menu_id):
+    try:
+        res = requests.post(
+            f'https://api.line.me/v2/bot/user/{user_id}/richmenu/{rich_menu_id}',
+            headers={'Authorization': f'Bearer {LINE_CHANNEL_ACCESS_TOKEN}'}
+        )
+        print(f'リッチメニュー切替: {res.status_code}')
+    except Exception as e:
+        print(f'リッチメニュー切替エラー: {e}')
+
 def process_registration(data):
-    """LIFFフォームから送られたデータを処理する"""
     try:
         user_id = data.get('user_id')
-
-        # フォームの回答を1つのメッセージにまとめてDifyに送る
         summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
 
 性別：{data.get('gender')}
@@ -103,13 +210,14 @@ def process_registration(data):
 1日の歩数：{data.get('daily_steps')}"""
 
         print(f'登録データをDifyに送信: {user_id}')
-
-        # 新しい会話として開始（conversation_idは空）
         answer, new_conv_id = ask_dify(user_id, summary_message, '')
 
         if answer:
             conversation_ids[user_id] = new_conv_id
             send_line_push(user_id, answer)
+            main_menu_id = os.environ.get('MAIN_RICH_MENU_ID')
+            if main_menu_id:
+                link_rich_menu(user_id, main_menu_id)
         else:
             send_line_push(user_id, 'プランの作成に失敗しました。もう一度LINEで「はじめまして」と送ってみてね。')
 
@@ -124,7 +232,6 @@ def liff_register():
     if not data or not data.get('user_id'):
         return jsonify({'error': 'user_id is required'}), 400
 
-    # 別スレッドで処理（フォームをすぐ完了画面に進めるため）
     thread = threading.Thread(target=process_registration, args=(data,))
     thread.start()
 
@@ -142,17 +249,29 @@ def webhook():
     data = json.loads(body)
 
     for event in data.get('events', []):
-        if event['type'] == 'message' and event['message']['type'] == 'text':
+        if event['type'] == 'message':
             user_id = event['source']['userId']
-            user_message = event['message']['text']
+            message = event['message']
 
-            print(f'メッセージ受信: {user_message}')
+            # テキストメッセージ
+            if message['type'] == 'text':
+                user_message = message['text']
+                print(f'テキスト受信: {user_message}')
+                thread = threading.Thread(
+                    target=process_message,
+                    args=(user_id, user_message)
+                )
+                thread.start()
 
-            thread = threading.Thread(
-                target=process_message,
-                args=(user_id, user_message)
-            )
-            thread.start()
+            # 画像メッセージ
+            elif message['type'] == 'image':
+                message_id = message['id']
+                print(f'画像受信: messageId={message_id}')
+                thread = threading.Thread(
+                    target=process_image_message,
+                    args=(user_id, message_id)
+                )
+                thread.start()
 
     return 'OK'
 
