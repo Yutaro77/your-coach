@@ -368,7 +368,9 @@
       <button class="option-btn" data-value="絞りたい"><span class="option-num">①</span>絞りたい（体脂肪を落としたい）</button>
       <button class="option-btn" data-value="増やしたい"><span class="option-num">②</span>増やしたい（筋肉をつけたい）</button>
       <button class="option-btn" data-value="両方"><span class="option-num">③</span>両方やりたい</button>
+      <button class="option-btn" data-value="その他" data-other="true"><span class="option-num">④</span>その他（なりたい体型・有名人など）</button>
     </div>
+    <input class="text-input other-input" type="text" placeholder="例：〇〇選手みたいな体になりたい" id="input-goal-other" style="display:none; margin-top: 14px;">
   </div>
 
   <!-- STEP 6: 目標体重 -->
@@ -504,7 +506,7 @@ let liffUserId = null;
 // LIFF初期化
 async function initLiff() {
   try {
-    await liff.init({ liffId: '2010429232-TSaTmCB8' });
+    await liff.init({ liffId: 'LIFF_ID_HERE' });
     if (liff.isLoggedIn()) {
       const profile = await liff.getProfile();
       liffUserId = profile.userId;
@@ -532,7 +534,14 @@ function nextStep() {
   if (type === 'choice') {
     const selected = step.querySelector('.option-btn.selected');
     if (!selected) return;
-    answers['step' + currentStep] = selected.dataset.value;
+
+    if (selected.dataset.other === 'true') {
+      const otherInput = step.querySelector('.other-input');
+      if (!otherInput.value) return;
+      answers['step' + currentStep] = otherInput.value;
+    } else {
+      answers['step' + currentStep] = selected.dataset.value;
+    }
   } else if (type === 'number') {
     const input = step.querySelector('.text-input');
     if (!input.value) return;
@@ -552,7 +561,7 @@ function nextStep() {
   document.getElementById('nextBtn').disabled = true;
   document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
 
-  const input = nextStepEl.querySelector('.text-input');
+  const input = nextStepEl.querySelector('.text-input:not(.other-input)');
   if (input) setTimeout(() => input.focus(), 300);
 }
 
@@ -562,12 +571,39 @@ document.querySelectorAll('.option-btn').forEach(btn => {
     const parent = this.closest('.options');
     parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
     this.classList.add('selected');
-    document.getElementById('nextBtn').disabled = false;
+
+    // 同じステップ内に「その他」用テキスト入力があるか確認
+    const step = this.closest('.step');
+    const otherInput = step.querySelector('.other-input');
+
+    if (otherInput) {
+      if (this.dataset.other === 'true') {
+        otherInput.style.display = 'block';
+        otherInput.focus();
+        document.getElementById('nextBtn').disabled = !otherInput.value;
+      } else {
+        otherInput.style.display = 'none';
+        otherInput.value = '';
+        document.getElementById('nextBtn').disabled = false;
+      }
+    } else {
+      document.getElementById('nextBtn').disabled = false;
+    }
+  });
+});
+
+// 「その他」テキスト入力欄の入力監視
+document.querySelectorAll('.other-input').forEach(input => {
+  input.addEventListener('input', function() {
+    document.getElementById('nextBtn').disabled = !this.value;
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && this.value) nextStep();
   });
 });
 
 // テキスト入力
-document.querySelectorAll('.text-input').forEach(input => {
+document.querySelectorAll('.text-input:not(.other-input)').forEach(input => {
   input.addEventListener('input', function() {
     document.getElementById('nextBtn').disabled = !this.value;
   });
