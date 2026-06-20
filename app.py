@@ -15,9 +15,65 @@ LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 DIFY_API_KEY = os.environ.get('DIFY_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+SHEET_API_URL = os.environ.get('SHEET_API_URL')
 DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages'
 
+# メモリ上のキャッシュ（サーバー起動中はここを優先的に使う）
 conversation_ids = {}
+cache_loaded = False
+cache_lock = threading.Lock()
+
+def load_conversation_cache():
+    """起動時にスプレッドシートから会話IDを読み込む"""
+    global conversation_ids, cache_loaded
+    try:
+        res = requests.get(SHEET_API_URL, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            with cache_lock:
+                conversation_ids.update(data)
+            print(f'会話キャッシュ読み込み完了: {len(data)}件')
+        else:
+            print(f'会話キャッシュ読み込み失敗: {res.status_code}')
+    except Exception as e:
+        print(f'会話キャッシュ読み込みエラー: {e}')
+    cache_loaded = True
+
+def save_conversation_id(user_id, conversation_id):
+    """スプレッドシートに会話IDを保存する（非同期）"""
+    def _save():
+        try:
+            res = requests.post(
+                SHEET_API_URL,
+                json={'user_id': user_id, 'conversation_id': conversation_id},
+                timeout=15
+            )
+            print(f'会話ID保存: {res.status_code}')
+        except Exception as e:
+            print(f'会話ID保存エラー: {e}')
+    threading.Thread(target=_save).start()
+
+def get_conversation_id(user_id):
+    """メモリにあれば使う。なければスプレッドシートを直接確認する"""
+    with cache_lock:
+        if user_id in conversation_ids:
+            return conversation_ids[user_id]
+    # メモリにない場合はシートを直接見に行く（再起動直後など）
+    try:
+        res = requests.get(SHEET_API_URL, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            with cache_lock:
+                conversation_ids.update(data)
+            return data.get(user_id, '')
+    except Exception as e:
+        print(f'個別会話ID取得エラー: {e}')
+    return ''
+
+def set_conversation_id(user_id, conversation_id):
+    with cache_lock:
+        conversation_ids[user_id] = conversation_id
+    save_conversation_id(user_id, conversation_id)
 
 def verify_signature(body, signature):
     hash = hmac.new(
@@ -70,10 +126,10 @@ def ask_dify(user_id, message, conversation_id=''):
 
 def process_message(user_id, user_message):
     try:
-        conversation_id = conversation_ids.get(user_id, '')
+        conversation_id = get_conversation_id(user_id)
         answer, new_conv_id = ask_dify(user_id, user_message, conversation_id)
         if answer:
-            conversation_ids[user_id] = new_conv_id
+            set_conversation_id(user_id, new_conv_id)
             send_line_push(user_id, answer)
         else:
             send_line_push(user_id, 'すみません、もう一度送ってね！')
@@ -81,7 +137,6 @@ def process_message(user_id, user_message):
         print(f'エラー発生: {e}')
 
 def get_line_image(message_id):
-    """LINEから画像データを取得してbase64に変換する"""
     try:
         res = requests.get(
             f'https://api-data.line.me/v2/bot/message/{message_id}/content',
@@ -98,7 +153,6 @@ def get_line_image(message_id):
         return None
 
 def analyze_food_image(image_base64, user_id):
-    """Claude APIで食事写真を分析する"""
     try:
         response = requests.post(
             'https://api.anthropic.com/v1/messages',
@@ -167,7 +221,6 @@ def analyze_food_image(image_base64, user_id):
         return None
 
 def process_image_message(user_id, message_id):
-    """画像メッセージを処理する"""
     try:
         send_line_push(user_id, '写真を確認してるよ、少し待ってね！')
 
@@ -219,7 +272,7 @@ def process_registration(data):
         answer, new_conv_id = ask_dify(user_id, summary_message, '')
 
         if answer:
-            conversation_ids[user_id] = new_conv_id
+            set_conversation_id(user_id, new_conv_id)
             send_line_push(user_id, answer)
             main_menu_id = os.environ.get('MAIN_RICH_MENU_ID')
             if main_menu_id:
@@ -259,7 +312,6 @@ def webhook():
             user_id = event['source']['userId']
             message = event['message']
 
-            # テキストメッセージ
             if message['type'] == 'text':
                 user_message = message['text']
                 print(f'テキスト受信: {user_message}')
@@ -269,7 +321,6 @@ def webhook():
                 )
                 thread.start()
 
-            # 画像メッセージ
             elif message['type'] == 'image':
                 message_id = message['id']
                 print(f'画像受信: messageId={message_id}')
@@ -284,6 +335,9 @@ def webhook():
 @app.route('/', methods=['GET'])
 def health():
     return 'OK'
+
+# サーバー起動時に一度だけキャッシュを読み込む
+load_conversation_cache()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
