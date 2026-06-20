@@ -126,8 +126,19 @@ def ask_dify(user_id, message, conversation_id=''):
 
 def process_message(user_id, user_message):
     try:
+        from datetime import datetime
+        import pytz
+        jst = pytz.timezone('Asia/Tokyo')
+        now = datetime.now(jst)
+        weekdays = ['月', '火', '水', '木', '金', '土', '日']
+        today_str = f"{now.year}年{now.month}月{now.day}日（{weekdays[now.weekday()]}）"
+
+        # 起床・トレーニング開始・就寝ボタンなど、日付に関わる操作の時は
+        # 実際の日付情報をメッセージに付与する
+        message_with_date = f"[今日の日付：{today_str}]\n{user_message}"
+
         conversation_id = get_conversation_id(user_id)
-        answer, new_conv_id = ask_dify(user_id, user_message, conversation_id)
+        answer, new_conv_id = ask_dify(user_id, message_with_date, conversation_id)
         if answer:
             set_conversation_id(user_id, new_conv_id)
             send_line_push(user_id, answer)
