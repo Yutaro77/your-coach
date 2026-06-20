@@ -194,10 +194,38 @@
     right: 0;
     padding: 20px 24px 36px;
     background: linear-gradient(to top, #0f0f13 60%, transparent);
+    display: flex;
+    gap: 10px;
   }
 
-  .btn-next button {
-    width: 100%;
+  .btn-back {
+    width: 56px;
+    flex-shrink: 0;
+    padding: 18px;
+    background: #1a1a2e;
+    border: 1.5px solid #2a2a4a;
+    color: #ccccdd;
+    font-size: 18px;
+    border-radius: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .btn-back:active {
+    transform: scale(0.96);
+    background: #22223a;
+  }
+
+  .btn-back:disabled {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #nextBtn {
+    flex: 1;
     padding: 18px;
     background: #4FC3F7;
     color: #0f0f13;
@@ -210,13 +238,13 @@
     letter-spacing: 0.05em;
   }
 
-  .btn-next button:disabled {
+  #nextBtn:disabled {
     background: #1e1e2e;
     color: #444466;
     cursor: not-allowed;
   }
 
-  .btn-next button:not(:disabled):active {
+  #nextBtn:not(:disabled):active {
     transform: scale(0.98);
     background: #38b2e8;
   }
@@ -486,6 +514,7 @@
 
 <!-- 次へボタン -->
 <div class="btn-next" id="btnNext">
+  <button class="btn-back" id="backBtn" disabled onclick="prevStep()">&#8592;</button>
   <button id="nextBtn" disabled onclick="nextStep()">次へ</button>
 </div>
 
@@ -506,7 +535,7 @@ let liffUserId = null;
 // LIFF初期化
 async function initLiff() {
   try {
-    await liff.init({ liffId: '2010429232-TSaTmCB8' });
+    await liff.init({ liffId: 'LIFF_ID_HERE' });
     if (liff.isLoggedIn()) {
       const profile = await liff.getProfile();
       liffUserId = profile.userId;
@@ -524,6 +553,42 @@ function updateProgress() {
   const pct = ((currentStep - 1) / TOTAL_STEPS) * 100;
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('progressText').textContent = currentStep + ' / ' + TOTAL_STEPS;
+}
+
+// 指定したステップ要素に、保存済みのanswersを反映する（選択状態・入力値の復元）
+function restoreStepState(stepEl) {
+  const stepNum = stepEl.dataset.step;
+  const savedValue = answers['step' + stepNum];
+  if (savedValue === undefined) return;
+
+  const type = stepEl.dataset.type;
+  if (type === 'choice') {
+    const buttons = stepEl.querySelectorAll('.option-btn');
+    let matched = false;
+    buttons.forEach(b => {
+      if (b.dataset.value === savedValue && b.dataset.other !== 'true') {
+        b.classList.add('selected');
+        matched = true;
+      } else {
+        b.classList.remove('selected');
+      }
+    });
+    const otherInput = stepEl.querySelector('.other-input');
+    if (!matched && otherInput) {
+      const otherBtn = stepEl.querySelector('.option-btn[data-other="true"]');
+      if (otherBtn) otherBtn.classList.add('selected');
+      otherInput.style.display = 'block';
+      otherInput.value = savedValue;
+    }
+  } else if (type === 'number') {
+    const input = stepEl.querySelector('.text-input');
+    if (input) input.value = savedValue;
+  }
+}
+
+// 戻るボタンの表示状態を更新
+function updateBackButton() {
+  document.getElementById('backBtn').disabled = (currentStep === 1);
 }
 
 // 次のステップへ
@@ -556,13 +621,35 @@ function nextStep() {
   step.classList.remove('active');
   currentStep++;
   const nextStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  restoreStepState(nextStepEl);
   nextStepEl.classList.add('active');
   updateProgress();
-  document.getElementById('nextBtn').disabled = true;
+  updateBackButton();
+
+  const hasAnswerAlready = answers['step' + currentStep] !== undefined;
+  document.getElementById('nextBtn').disabled = !hasAnswerAlready;
   document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
 
   const input = nextStepEl.querySelector('.text-input:not(.other-input)');
-  if (input) setTimeout(() => input.focus(), 300);
+  if (input && !hasAnswerAlready) setTimeout(() => input.focus(), 300);
+}
+
+// 前のステップへ戻る
+function prevStep() {
+  if (currentStep <= 1) return;
+
+  const step = document.querySelector('.step.active');
+  step.classList.remove('active');
+  currentStep--;
+  const prevStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  restoreStepState(prevStepEl);
+  prevStepEl.classList.add('active');
+  updateProgress();
+  updateBackButton();
+
+  const hasAnswerAlready = answers['step' + currentStep] !== undefined;
+  document.getElementById('nextBtn').disabled = !hasAnswerAlready;
+  document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
 }
 
 // 選択肢クリック
@@ -663,6 +750,7 @@ function closeLiff() {
 // 初期化
 initLiff();
 updateProgress();
+updateBackButton();
 </script>
 </body>
 </html>
