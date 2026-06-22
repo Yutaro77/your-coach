@@ -163,6 +163,73 @@ def get_line_image(message_id):
         print(f'画像取得エラー: {e}')
         return None
 
+def analyze_goal_image(image_base64):
+    """初回登録時にアップロードされた『なりたい体型』の画像を解析する"""
+    try:
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'claude-sonnet-4-5',
+                'max_tokens': 500,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'image',
+                                'source': {
+                                    'type': 'base64',
+                                    'media_type': 'image/jpeg',
+                                    'data': image_base64
+                                }
+                            },
+                            {
+                                'type': 'text',
+                                'text': """この画像は、ユーザーが「なりたい体型の参考」として
+アップロードしたものです。トレーニング・食事プランの
+作成に使うため、以下の項目を分析してください。
+
+・推定される体脂肪率の範囲（％、目安として）
+・筋肉のつき方の特徴（厚みがあるか、引き締まっているか等）
+・特に発達している部位（胸・肩・腹筋・脚など）
+・全体的な体型の方向性（細身/筋肉質/バランス型など）
+
+写真が体型を判断できないもの（顔のみ、服を着ていて
+体型が見えない、人物が写っていない等）の場合は
+「体型を判断できる画像ではありません」とだけ答えてください。
+
+出力は短く、以下の形式で。
+
+体脂肪率目安：○〜○%
+特徴：（1文）
+重点部位：（部位名を2〜3個）
+方向性：（1語〜数語）
+
+写真の人物を特定したり、実名を推測したりはしないでください。
+あくまで体型の特徴のみを分析してください。"""
+                            }
+                        ]
+                    }
+                ]
+            },
+            timeout=30
+        )
+        print(f'目標画像解析ステータス: {response.status_code}')
+        if response.status_code == 200:
+            data = response.json()
+            return data['content'][0]['text']
+        else:
+            print(f'目標画像解析失敗: {response.text[:300]}')
+            return None
+    except Exception as e:
+        print(f'目標画像解析エラー: {e}')
+        return None
+
 def analyze_food_image(image_base64, user_id):
     try:
         response = requests.post(
@@ -263,13 +330,22 @@ def link_rich_menu(user_id, rich_menu_id):
 def process_registration(data):
     try:
         user_id = data.get('user_id')
+
+        goal_image_analysis = ''
+        goal_image_b64 = data.get('goal_image')
+        if goal_image_b64:
+            print(f'目標体型画像を解析中: {user_id}')
+            result = analyze_goal_image(goal_image_b64)
+            if result:
+                goal_image_analysis = f"\n目標体型の画像解析結果：\n{result}\n（この解析結果を目標設定の参考にしてください。あくまで推定値として扱ってください）"
+
         summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
 
 性別：{data.get('gender')}
 年齢：{data.get('age')}歳
 身長：{data.get('height')}cm
 体重：{data.get('weight')}kg
-目標：{data.get('goal')}
+目標：{data.get('goal')}{goal_image_analysis}
 目標体重：{data.get('goal_weight')}kg
 期限：{data.get('deadline')}
 開始日：{data.get('start_date')}
