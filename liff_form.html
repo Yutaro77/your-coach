@@ -830,6 +830,13 @@ function nextStep() {
 
   step.classList.remove('active');
   currentStep++;
+
+  // STEP6で「画像で目標体型を提示」を選んだ場合、STEP7（目標体重）は不要なのでスキップする
+  if (currentStep === 7 && goalImageBase64) {
+    answers['step7'] = 'スキップ（画像で目標設定済み）';
+    currentStep++;
+  }
+
   const nextStepEl = document.querySelector('[data-step="' + currentStep + '"]');
   restoreStepState(nextStepEl);
   nextStepEl.classList.add('active');
@@ -854,6 +861,12 @@ function prevStep() {
   const step = document.querySelector('.step.active');
   step.classList.remove('active');
   currentStep--;
+
+  // STEP8（期限）から戻る時、画像で目標設定済みならSTEP7をスキップしてSTEP6に戻る
+  if (currentStep === 7 && goalImageBase64) {
+    currentStep--;
+  }
+
   const prevStepEl = document.querySelector('[data-step="' + currentStep + '"]');
   restoreStepState(prevStepEl);
   prevStepEl.classList.add('active');
