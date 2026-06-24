@@ -163,7 +163,7 @@ def get_line_image(message_id):
         print(f'画像取得エラー: {e}')
         return None
 
-def analyze_goal_image(image_base64):
+def analyze_goal_image(image_base64, media_type='image/jpeg'):
     """初回登録時にアップロードされた『なりたい体型』の画像を解析する"""
     try:
         response = requests.post(
@@ -184,7 +184,7 @@ def analyze_goal_image(image_base64):
                                 'type': 'image',
                                 'source': {
                                     'type': 'base64',
-                                    'media_type': 'image/jpeg',
+                                    'media_type': media_type,
                                     'data': image_base64
                                 }
                             },
@@ -327,7 +327,7 @@ def link_rich_menu(user_id, rich_menu_id):
     except Exception as e:
         print(f'リッチメニュー切替エラー: {e}')
 
-def analyze_current_body_image(image_base64, context_info=''):
+def analyze_current_body_image(image_base64, context_info='', media_type='image/jpeg'):
     """初回登録時にアップロードされた『今の体型』の画像を解析する"""
     try:
         response = requests.post(
@@ -348,7 +348,7 @@ def analyze_current_body_image(image_base64, context_info=''):
                                 'type': 'image',
                                 'source': {
                                     'type': 'base64',
-                                    'media_type': 'image/jpeg',
+                                    'media_type': media_type,
                                     'data': image_base64
                                 }
                             },
@@ -484,10 +484,11 @@ TDEE計算の参考にしてください。
 
         elif bodyfat_method == 'photo':
             current_image_b64 = data.get('current_image')
+            current_image_type = data.get('current_image_type') or 'image/jpeg'
             if current_image_b64:
-                print(f'現在の体型画像を解析中: {user_id}')
+                print(f'現在の体型画像を解析中: {user_id}（形式：{current_image_type}）')
                 context_for_image = f"性別：{data.get('gender')}、身長：{data.get('height')}cm、体重：{data.get('weight')}kg"
-                result = analyze_current_body_image(current_image_b64, context_for_image)
+                result = analyze_current_body_image(current_image_b64, context_for_image, current_image_type)
                 if result:
                     body_fat_estimation_section = f"""
 
@@ -500,9 +501,10 @@ TDEE計算の参考にしてください。
         # --- 目標体型（テキスト or 画像） ---
         goal_image_analysis = ''
         goal_image_b64 = data.get('goal_image')
+        goal_image_type = data.get('goal_image_type') or 'image/jpeg'
         if goal_image_b64:
-            print(f'目標体型画像を解析中: {user_id}')
-            result = analyze_goal_image(goal_image_b64)
+            print(f'目標体型画像を解析中: {user_id}（形式：{goal_image_type}）')
+            result = analyze_goal_image(goal_image_b64, goal_image_type)
             if result:
                 goal_image_analysis = f"\n目標体型の画像解析結果：\n{result}\n（この解析結果を目標設定の参考にしてください。あくまで推定値として扱ってください）"
 
