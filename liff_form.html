@@ -725,7 +725,8 @@ function isBodyfatStepValid() {
     return !!(waistInput && waistInput.value);
   }
   if (bodyfatMethod === 'pinch') {
-    return !!answers['step5_pinch_selected'];
+    const selected = document.querySelector('[data-pinch-value].selected');
+    return !!selected;
   }
   if (bodyfatMethod === 'photo') {
     return !!currentImageBase64;
