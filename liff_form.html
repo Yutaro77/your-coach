@@ -249,6 +249,19 @@
     background: #38b2e8;
   }
 
+  /* スキップボタン（任意項目用） */
+  .skip-btn {
+    display: block;
+    margin: 16px auto 0;
+    background: none;
+    border: none;
+    color: #666688;
+    font-size: 13px;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 8px;
+  }
+
   /* 完了画面 */
   .complete-screen {
     display: none;
@@ -387,9 +400,57 @@
     <div class="unit">kg</div>
   </div>
 
-  <!-- STEP 5: 目標 -->
-  <div class="step" data-step="5" data-type="choice">
+  <!-- STEP 5: 体脂肪率の参考情報（1つだけ選ぶ） -->
+  <div class="step" data-step="5" data-type="bodyfat" data-optional="true">
     <div class="step-number">STEP 05</div>
+    <div class="step-question">体脂肪の目安、教えて</div>
+    <div class="step-hint">3つのうちやりやすい方法を1つ選んでね</div>
+
+    <div class="options" id="bodyfat-method-options">
+      <button class="option-btn" data-bodyfat-method="waist"><span class="option-num">①</span>ウエストサイズを入力する</button>
+      <button class="option-btn" data-bodyfat-method="pinch"><span class="option-num">②</span>お腹をつまんだ感覚で答える</button>
+      <button class="option-btn" data-bodyfat-method="photo"><span class="option-num">③</span>体型の写真を送る</button>
+    </div>
+    <button type="button" class="skip-btn" data-skip-step="5">わからない・スキップ</button>
+
+    <!-- ①ウエスト入力欄 -->
+    <div id="bodyfat-waist-area" style="display:none; margin-top:18px;">
+      <input class="text-input" type="number" placeholder="例：78" min="50" max="150" id="input-waist">
+      <div class="unit">cm</div>
+    </div>
+
+    <!-- ②つまみ厚み選択肢 -->
+    <div id="bodyfat-pinch-area" style="display:none; margin-top:18px;">
+      <div class="options">
+        <button class="option-btn" data-pinch-value="つまめない"><span class="option-num">①</span>ほとんどつまめない</button>
+        <button class="option-btn" data-pinch-value="第一関節程度"><span class="option-num">②</span>第一関節くらい（1〜2cm）</button>
+        <button class="option-btn" data-pinch-value="第二関節程度"><span class="option-num">③</span>第二関節くらい（2〜4cm）</button>
+        <button class="option-btn" data-pinch-value="しっかりつまめる"><span class="option-num">④</span>指全体でしっかりつまめる</button>
+      </div>
+    </div>
+
+    <!-- ③写真アップロード -->
+    <div id="bodyfat-photo-area" style="display:none; margin-top:18px;">
+      <div id="current-image-area">
+        <label for="current-image-input" id="current-image-label" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px; border:1.5px dashed #2a2a4a; border-radius:12px; cursor:pointer; color:#666688; font-size:13px;">
+          <span style="font-size:28px;">+</span>
+          <span>体型の写真をアップロード</span>
+        </label>
+        <div style="margin-top:8px; font-size:11px; color:#444466; line-height:1.6; text-align:center;">
+          全身が映っていて、体型が<br>わかりやすい写真だと精度が上がります
+        </div>
+        <input type="file" id="current-image-input" accept="image/*" style="display:none;">
+        <div id="current-image-preview-wrap" style="display:none; position:relative; margin-top:8px;">
+          <img id="current-image-preview" style="width:100%; border-radius:12px; display:block;">
+          <button type="button" id="current-image-remove" style="position:absolute; top:8px; right:8px; width:28px; height:28px; border-radius:50%; background:rgba(15,15,19,0.8); color:#fff; border:none; font-size:16px; cursor:pointer;">&times;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 6: 目標 -->
+  <div class="step" data-step="6" data-type="choice">
+    <div class="step-number">STEP 06</div>
     <div class="step-question">目標は何？</div>
     <div class="step-hint">一番近いものを選んでね</div>
     <div class="options">
@@ -421,18 +482,18 @@
     </div>
   </div>
 
-  <!-- STEP 6: 目標体重 -->
-  <div class="step" data-step="6" data-type="number">
-    <div class="step-number">STEP 06</div>
+  <!-- STEP 7: 目標体重 -->
+  <div class="step" data-step="7" data-type="number">
+    <div class="step-number">STEP 07</div>
     <div class="step-question">目標体重は？</div>
     <div class="step-hint">なんとなくの数字でいいよ</div>
     <input class="text-input" type="number" placeholder="例：65.0" step="0.1" min="30" max="200" id="input-goal-weight">
     <div class="unit">kg</div>
   </div>
 
-  <!-- STEP 7: 期限 -->
-  <div class="step" data-step="7" data-type="choice">
-    <div class="step-number">STEP 07</div>
+  <!-- STEP 8: 期限 -->
+  <div class="step" data-step="8" data-type="choice">
+    <div class="step-number">STEP 08</div>
     <div class="step-question">いつまでに達成したい？</div>
     <div class="step-hint">プランのペースに使うよ</div>
     <div class="options">
@@ -443,9 +504,9 @@
     </div>
   </div>
 
-  <!-- STEP 8: 開始日 -->
-  <div class="step" data-step="8" data-type="choice">
-    <div class="step-number">STEP 08</div>
+  <!-- STEP 9: 開始日 -->
+  <div class="step" data-step="9" data-type="choice">
+    <div class="step-number">STEP 09</div>
     <div class="step-question">いつから始める？</div>
     <div class="options">
       <button class="option-btn" data-value="今日から"><span class="option-num">①</span>今日から</button>
@@ -455,9 +516,9 @@
     </div>
   </div>
 
-  <!-- STEP 9: 頻度 -->
-  <div class="step" data-step="9" data-type="choice">
-    <div class="step-number">STEP 09</div>
+  <!-- STEP 10: 頻度 -->
+  <div class="step" data-step="10" data-type="choice">
+    <div class="step-number">STEP 10</div>
     <div class="step-question">週何回ジムに行けそう？</div>
     <div class="options">
       <button class="option-btn" data-value="週1回"><span class="option-num">①</span>週1回</button>
@@ -467,9 +528,9 @@
     </div>
   </div>
 
-  <!-- STEP 10: 筋トレ歴 -->
-  <div class="step" data-step="10" data-type="choice">
-    <div class="step-number">STEP 10</div>
+  <!-- STEP 11: 筋トレ歴 -->
+  <div class="step" data-step="11" data-type="choice">
+    <div class="step-number">STEP 11</div>
     <div class="step-question">筋トレ歴はどのくらい？</div>
     <div class="options">
       <button class="option-btn" data-value="始めたばかり"><span class="option-num">①</span>始めたばかり（6ヶ月未満）</button>
@@ -478,9 +539,9 @@
     </div>
   </div>
 
-  <!-- STEP 11: 所要時間 -->
-  <div class="step" data-step="11" data-type="choice">
-    <div class="step-number">STEP 11</div>
+  <!-- STEP 12: 所要時間 -->
+  <div class="step" data-step="12" data-type="choice">
+    <div class="step-number">STEP 12</div>
     <div class="step-question">1回のトレーニングに<br>かけられる時間は？</div>
     <div class="options">
       <button class="option-btn" data-value="30分"><span class="option-num">①</span>30分</button>
@@ -490,9 +551,9 @@
     </div>
   </div>
 
-  <!-- STEP 12: 時間帯 -->
-  <div class="step" data-step="12" data-type="choice">
-    <div class="step-number">STEP 12</div>
+  <!-- STEP 13: 時間帯 -->
+  <div class="step" data-step="13" data-type="choice">
+    <div class="step-number">STEP 13</div>
     <div class="step-question">トレーニングする時間帯は？</div>
     <div class="step-hint">食事スケジュールに反映するよ</div>
     <div class="options">
@@ -503,7 +564,559 @@
     </div>
   </div>
 
-  <!-- STEP 13: 歩数 -->
-  <div class="step" data-step="13" data-type="choice">
-    <div class="step-number">STEP 13</div>
-    <div class="step-q
+  <!-- STEP 14: 歩数 -->
+  <div class="step" data-step="14" data-type="choice">
+    <div class="step-number">STEP 14</div>
+    <div class="step-question">普段1日何歩くらい歩く？</div>
+    <div class="step-hint">スマホのヘルスケアアプリで確認できるよ。消費カロリーの計算に使うよ</div>
+    <div class="options">
+      <button class="option-btn" data-value="2000歩未満"><span class="option-num">①</span>2,000歩未満</button>
+      <button class="option-btn" data-value="2000〜5000歩"><span class="option-num">②</span>2,000〜5,000歩</button>
+      <button class="option-btn" data-value="5000〜8000歩"><span class="option-num">③</span>5,000〜8,000歩</button>
+      <button class="option-btn" data-value="8000〜12000歩"><span class="option-num">④</span>8,000〜12,000歩</button>
+      <button class="option-btn" data-value="12000歩以上"><span class="option-num">⑤</span>12,000歩以上</button>
+      <button class="option-btn" data-value="わからない"><span class="option-num">⑥</span>わからない</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 完了画面 -->
+<div class="complete-screen" id="completeScreen">
+  <div class="complete-icon">✓</div>
+  <div class="complete-title">登録完了！</div>
+  <div class="complete-text">
+    あなた専用のプランを<br>
+    今すぐLINEに送るね。<br>
+    少しだけ待っててね。
+  </div>
+  <button class="complete-btn" onclick="closeLiff()">LINEに戻る</button>
+</div>
+
+<!-- 次へボタン -->
+<div class="btn-next" id="btnNext">
+  <button class="btn-back" id="backBtn" disabled onclick="prevStep()">&#8592;</button>
+  <button id="nextBtn" disabled onclick="nextStep()">次へ</button>
+</div>
+
+<!-- ローディング -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">プランを作成中...</div>
+</div>
+
+<script>
+const TOTAL_STEPS = 14;
+const SERVER_URL = 'https://your-coach.onrender.com/liff_register';
+
+let currentStep = 1;
+let answers = {};
+let goalImageBase64 = null;
+let currentImageBase64 = null;
+let bodyfatMethod = null;
+let liffUserId = null;
+
+// LIFF初期化
+async function initLiff() {
+  try {
+    await liff.init({ liffId: '2010429232-TSaTmCB8' });
+    if (liff.isLoggedIn()) {
+      const profile = await liff.getProfile();
+      liffUserId = profile.userId;
+    } else {
+      liff.login();
+    }
+  } catch (e) {
+    console.log('LIFF初期化エラー:', e);
+    liffUserId = 'test_user';
+  }
+}
+
+// プログレス更新
+function updateProgress() {
+  const pct = ((currentStep - 1) / TOTAL_STEPS) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = currentStep + ' / ' + TOTAL_STEPS;
+}
+
+// 指定したステップ要素に、保存済みのanswersを反映する（選択状態・入力値の復元）
+function restoreStepState(stepEl) {
+  const stepNum = stepEl.dataset.step;
+  const savedValue = answers['step' + stepNum];
+  const type = stepEl.dataset.type;
+
+  if (type === 'bodyfat') {
+    restoreBodyfatStepState(stepEl);
+    return;
+  }
+
+  if (type === 'choice') {
+    const buttons = stepEl.querySelectorAll('.option-btn');
+    let matched = false;
+    buttons.forEach(b => {
+      if (savedValue !== undefined && b.dataset.value === savedValue && b.dataset.other !== 'true') {
+        b.classList.add('selected');
+        matched = true;
+      } else {
+        b.classList.remove('selected');
+      }
+    });
+    const wrapper = stepEl.querySelector('.other-input-wrapper');
+    if (wrapper) {
+      const isOtherCase = !matched && (savedValue !== undefined || goalImageBase64);
+      if (isOtherCase) {
+        const otherBtn = stepEl.querySelector('.option-btn[data-other="true"]');
+        if (otherBtn) otherBtn.classList.add('selected');
+        wrapper.style.display = 'block';
+        const textInput = wrapper.querySelector('.other-text-input');
+        if (textInput && savedValue && !goalImageBase64) textInput.value = savedValue;
+      } else {
+        wrapper.style.display = 'none';
+      }
+    }
+  } else if (type === 'number') {
+    const input = stepEl.querySelector('.text-input');
+    if (input && savedValue !== undefined) input.value = savedValue;
+  }
+}
+
+// bodyfatステップ専用：選んだ方式に応じて表示を復元する
+function restoreBodyfatStepState(stepEl) {
+  const methodButtons = stepEl.querySelectorAll('#bodyfat-method-options .option-btn');
+  methodButtons.forEach(b => b.classList.remove('selected'));
+
+  if (bodyfatMethod) {
+    const activeBtn = stepEl.querySelector('[data-bodyfat-method="' + bodyfatMethod + '"]');
+    if (activeBtn) activeBtn.classList.add('selected');
+    showBodyfatArea(bodyfatMethod);
+  } else {
+    showBodyfatArea(null);
+  }
+
+  if (bodyfatMethod === 'waist') {
+    const waistInput = document.getElementById('input-waist');
+    if (waistInput && answers['step5'] && answers['step5'] !== 'スキップ') {
+      waistInput.value = answers['step5'];
+    }
+  } else if (bodyfatMethod === 'pinch') {
+    const pinchButtons = stepEl.querySelectorAll('[data-pinch-value]');
+    pinchButtons.forEach(b => {
+      if (b.dataset.pinchValue === answers['step5']) {
+        b.classList.add('selected');
+      } else {
+        b.classList.remove('selected');
+      }
+    });
+  }
+}
+
+// bodyfatステップ：選んだ方式に応じて入力エリアの表示を切り替える
+function showBodyfatArea(method) {
+  document.getElementById('bodyfat-waist-area').style.display = (method === 'waist') ? 'block' : 'none';
+  document.getElementById('bodyfat-pinch-area').style.display = (method === 'pinch') ? 'block' : 'none';
+  document.getElementById('bodyfat-photo-area').style.display = (method === 'photo') ? 'block' : 'none';
+}
+
+// bodyfatステップが回答済みかどうかを判定する
+function isBodyfatStepValid() {
+  if (!bodyfatMethod) return false;
+  if (bodyfatMethod === 'waist') {
+    const waistInput = document.getElementById('input-waist');
+    return !!(waistInput && waistInput.value);
+  }
+  if (bodyfatMethod === 'pinch') {
+    return !!answers['step5_pinch_selected'];
+  }
+  if (bodyfatMethod === 'photo') {
+    return !!currentImageBase64;
+  }
+  return false;
+}
+
+
+// 戻るボタンの表示状態を更新
+function updateBackButton() {
+  document.getElementById('backBtn').disabled = (currentStep === 1);
+}
+
+// STEP5（目標）が「その他」で、テキストも画像も入っていなければ未回答とみなす
+function isOtherStepValid(step) {
+  const otherBtn = step.querySelector('.option-btn[data-other="true"]');
+  if (!otherBtn || !otherBtn.classList.contains('selected')) return true;
+  const textInput = step.querySelector('.other-text-input');
+  return !!(textInput && textInput.value) || !!goalImageBase64;
+}
+
+// 次のステップへ
+// 指定したステップを「スキップ」して次に進む
+function goToStep(targetStep) {
+  const step = document.querySelector('.step.active');
+  step.classList.remove('active');
+  currentStep = targetStep;
+  const targetStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  restoreStepState(targetStepEl);
+  targetStepEl.classList.add('active');
+  updateProgress();
+  updateBackButton();
+
+  const targetType = targetStepEl.dataset.type;
+  const hasAnswerAlready = targetType === 'bodyfat'
+    ? isBodyfatStepValid()
+    : answers['step' + currentStep] !== undefined;
+  document.getElementById('nextBtn').disabled = !hasAnswerAlready;
+  document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
+}
+
+function nextStep() {
+  const step = document.querySelector('.step.active');
+  const type = step.dataset.type;
+
+  if (type === 'bodyfat') {
+    if (!bodyfatMethod) {
+      // 何も選ばずに次へは進めない（スキップボタンを使う）
+      return;
+    }
+    if (bodyfatMethod === 'waist') {
+      const waistInput = document.getElementById('input-waist');
+      if (!waistInput.value) return;
+      answers['step5'] = waistInput.value;
+      answers['step5_method'] = 'waist';
+    } else if (bodyfatMethod === 'pinch') {
+      const selected = step.querySelector('[data-pinch-value].selected');
+      if (!selected) return;
+      answers['step5'] = selected.dataset.pinchValue;
+      answers['step5_pinch_selected'] = true;
+      answers['step5_method'] = 'pinch';
+    } else if (bodyfatMethod === 'photo') {
+      if (!currentImageBase64) return;
+      answers['step5'] = '画像を送信済み';
+      answers['step5_method'] = 'photo';
+    }
+  } else if (type === 'choice') {
+    const selected = step.querySelector('.option-btn.selected');
+    if (!selected) return;
+
+    if (selected.dataset.other === 'true') {
+      if (!isOtherStepValid(step)) return;
+      const textInput = step.querySelector('.other-text-input');
+      if (goalImageBase64) {
+        answers['step' + currentStep] = textInput && textInput.value
+          ? textInput.value + '（画像も添付）'
+          : '画像で目標体型を提示';
+      } else {
+        answers['step' + currentStep] = textInput.value;
+      }
+    } else {
+      answers['step' + currentStep] = selected.dataset.value;
+    }
+  } else if (type === 'number') {
+    const input = step.querySelector('.text-input');
+    if (!input.value) {
+      if (step.dataset.optional === 'true') {
+        answers['step' + currentStep] = 'スキップ';
+      } else {
+        return;
+      }
+    } else {
+      answers['step' + currentStep] = input.value;
+    }
+  }
+
+  if (currentStep >= TOTAL_STEPS) {
+    submitForm();
+    return;
+  }
+
+  step.classList.remove('active');
+  currentStep++;
+  const nextStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  restoreStepState(nextStepEl);
+  nextStepEl.classList.add('active');
+  updateProgress();
+  updateBackButton();
+
+  const nextType = nextStepEl.dataset.type;
+  const hasAnswerAlready = nextType === 'bodyfat'
+    ? isBodyfatStepValid()
+    : answers['step' + currentStep] !== undefined;
+  document.getElementById('nextBtn').disabled = !hasAnswerAlready;
+  document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
+
+  const input = nextStepEl.querySelector('.text-input:not(.other-text-input)');
+  if (input && !hasAnswerAlready) setTimeout(() => input.focus(), 300);
+}
+
+// 前のステップへ戻る
+function prevStep() {
+  if (currentStep <= 1) return;
+
+  const step = document.querySelector('.step.active');
+  step.classList.remove('active');
+  currentStep--;
+  const prevStepEl = document.querySelector('[data-step="' + currentStep + '"]');
+  restoreStepState(prevStepEl);
+  prevStepEl.classList.add('active');
+  updateProgress();
+  updateBackButton();
+
+  const prevType = prevStepEl.dataset.type;
+  const hasAnswerAlready = prevType === 'bodyfat'
+    ? isBodyfatStepValid()
+    : answers['step' + currentStep] !== undefined;
+  document.getElementById('nextBtn').disabled = !hasAnswerAlready;
+  document.getElementById('nextBtn').textContent = currentStep === TOTAL_STEPS ? '登録する' : '次へ';
+}
+
+// 選択肢クリック
+document.querySelectorAll('.option-btn').forEach(btn => {
+  // bodyfatステップ専用ボタン（方式選択・つまみ厚み）は別ハンドラで処理する
+  if (btn.dataset.bodyfatMethod || btn.dataset.pinchValue) return;
+
+  btn.addEventListener('click', function() {
+    const parent = this.closest('.options');
+    parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+
+    const step = this.closest('.step');
+    const wrapper = step.querySelector('.other-input-wrapper');
+
+    if (wrapper) {
+      if (this.dataset.other === 'true') {
+        wrapper.style.display = 'block';
+        const textInput = wrapper.querySelector('.other-text-input');
+        if (textInput) textInput.focus();
+        document.getElementById('nextBtn').disabled = !isOtherStepValid(step);
+      } else {
+        wrapper.style.display = 'none';
+        document.getElementById('nextBtn').disabled = false;
+      }
+    } else {
+      document.getElementById('nextBtn').disabled = false;
+    }
+  });
+});
+
+// bodyfatステップ：方式選択ボタン（①ウエスト ②つまみ ③写真）
+document.querySelectorAll('[data-bodyfat-method]').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#bodyfat-method-options .option-btn').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+
+    bodyfatMethod = this.dataset.bodyfatMethod;
+    showBodyfatArea(bodyfatMethod);
+
+    // 方式を切り替えたら、その方式の入力欄にフォーカスする
+    if (bodyfatMethod === 'waist') {
+      const waistInput = document.getElementById('input-waist');
+      if (waistInput) setTimeout(() => waistInput.focus(), 200);
+    }
+
+    document.getElementById('nextBtn').disabled = !isBodyfatStepValid();
+  });
+});
+
+// bodyfatステップ：ウエスト入力欄の監視
+const waistInputEl = document.getElementById('input-waist');
+if (waistInputEl) {
+  waistInputEl.addEventListener('input', function() {
+    document.getElementById('nextBtn').disabled = !isBodyfatStepValid();
+  });
+  waistInputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && isBodyfatStepValid()) nextStep();
+  });
+}
+
+// bodyfatステップ：つまみ厚みボタン
+document.querySelectorAll('[data-pinch-value]').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('[data-pinch-value]').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+    document.getElementById('nextBtn').disabled = !isBodyfatStepValid();
+  });
+});
+
+// 「その他」テキスト入力欄の入力監視
+document.querySelectorAll('.other-text-input').forEach(input => {
+  input.addEventListener('input', function() {
+    const step = this.closest('.step');
+    document.getElementById('nextBtn').disabled = !isOtherStepValid(step);
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      const step = this.closest('.step');
+      if (isOtherStepValid(step)) nextStep();
+    }
+  });
+});
+
+// 通常のテキスト入力（数値項目など）
+document.querySelectorAll('.text-input:not(.other-text-input)').forEach(input => {
+  input.addEventListener('input', function() {
+    document.getElementById('nextBtn').disabled = !this.value;
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && this.value) nextStep();
+  });
+});
+
+// 目標体型の画像アップロード
+const goalImageInput = document.getElementById('goal-image-input');
+const goalImagePreviewWrap = document.getElementById('goal-image-preview-wrap');
+const goalImagePreview = document.getElementById('goal-image-preview');
+const goalImageLabel = document.getElementById('goal-image-label');
+const goalImageRemove = document.getElementById('goal-image-remove');
+
+if (goalImageInput) {
+  goalImageInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert('画像サイズが大きすぎます。8MB以下の画像を選んでね。');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const fullDataUrl = e.target.result;
+      goalImageBase64 = fullDataUrl.split(',')[1];
+      goalImagePreview.src = fullDataUrl;
+      goalImagePreviewWrap.style.display = 'block';
+      goalImageLabel.style.display = 'none';
+
+      const step = document.querySelector('.step.active');
+      document.getElementById('nextBtn').disabled = !isOtherStepValid(step);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+if (goalImageRemove) {
+  goalImageRemove.addEventListener('click', function() {
+    goalImageBase64 = null;
+    goalImageInput.value = '';
+    goalImagePreviewWrap.style.display = 'none';
+    goalImageLabel.style.display = 'flex';
+
+    const step = document.querySelector('.step.active');
+    document.getElementById('nextBtn').disabled = !isOtherStepValid(step);
+  });
+}
+
+// 今の体型写真（STEP7・任意）の画像アップロード
+const currentImageInput = document.getElementById('current-image-input');
+const currentImagePreviewWrap = document.getElementById('current-image-preview-wrap');
+const currentImagePreview = document.getElementById('current-image-preview');
+const currentImageLabel = document.getElementById('current-image-label');
+const currentImageRemove = document.getElementById('current-image-remove');
+
+if (currentImageInput) {
+  currentImageInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert('画像サイズが大きすぎます。8MB以下の画像を選んでね。');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const fullDataUrl = e.target.result;
+      currentImageBase64 = fullDataUrl.split(',')[1];
+      currentImagePreview.src = fullDataUrl;
+      currentImagePreviewWrap.style.display = 'block';
+      currentImageLabel.style.display = 'none';
+      document.getElementById('nextBtn').disabled = !isBodyfatStepValid();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+if (currentImageRemove) {
+  currentImageRemove.addEventListener('click', function() {
+    currentImageBase64 = null;
+    currentImageInput.value = '';
+    currentImagePreviewWrap.style.display = 'none';
+    currentImageLabel.style.display = 'flex';
+    document.getElementById('nextBtn').disabled = !isBodyfatStepValid();
+  });
+}
+
+// 任意項目のスキップボタン
+document.querySelectorAll('.skip-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const stepNum = parseInt(this.dataset.skipStep);
+    answers['step' + stepNum] = 'スキップ';
+    if (stepNum === 5) {
+      bodyfatMethod = null;
+      currentImageBase64 = null;
+    }
+    if (stepNum >= TOTAL_STEPS) {
+      submitForm();
+    } else {
+      goToStep(stepNum + 1);
+    }
+  });
+});
+
+// フォーム送信
+async function submitForm() {
+  document.getElementById('loading').classList.add('active');
+  document.getElementById('btnNext').style.display = 'none';
+
+  const data = {
+    user_id: liffUserId,
+    gender: answers['step1'],
+    age: answers['step2'],
+    height: answers['step3'],
+    weight: answers['step4'],
+    bodyfat_method: bodyfatMethod || 'スキップ',
+    waist: bodyfatMethod === 'waist' ? answers['step5'] : null,
+    pinch_thickness: bodyfatMethod === 'pinch' ? answers['step5'] : null,
+    current_image: bodyfatMethod === 'photo' ? currentImageBase64 : null,
+    goal: answers['step6'],
+    goal_image: goalImageBase64,
+    goal_weight: answers['step7'],
+    deadline: answers['step8'],
+    start_date: answers['step9'],
+    gym_frequency: answers['step10'],
+    training_history: answers['step11'],
+    training_duration: answers['step12'],
+    training_time: answers['step13'],
+    daily_steps: answers['step14']
+  };
+
+  try {
+    const res = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    document.getElementById('loading').classList.remove('active');
+    document.getElementById('stepsContainer').style.display = 'none';
+    document.getElementById('completeScreen').classList.add('active');
+  } catch (e) {
+    document.getElementById('loading').classList.remove('active');
+    alert('送信に失敗しました。もう一度試してね。');
+    document.getElementById('btnNext').style.display = 'block';
+  }
+}
+
+// LINEに戻る
+function closeLiff() {
+  try {
+    liff.closeWindow();
+  } catch(e) {
+    window.close();
+  }
+}
+
+// 初期化
+initLiff();
+updateProgress();
+updateBackButton();
+</script>
+</body>
+</html>
