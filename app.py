@@ -327,10 +327,177 @@ def link_rich_menu(user_id, rich_menu_id):
     except Exception as e:
         print(f'リッチメニュー切替エラー: {e}')
 
+def analyze_current_body_image(image_base64, context_info=''):
+    """初回登録時にアップロードされた『今の体型』の画像を解析する"""
+    try:
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'claude-sonnet-4-5',
+                'max_tokens': 500,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'image',
+                                'source': {
+                                    'type': 'base64',
+                                    'media_type': 'image/jpeg',
+                                    'data': image_base64
+                                }
+                            },
+                            {
+                                'type': 'text',
+                                'text': f"""この画像は、ユーザー本人の「今の体型」の写真です。
+トレーニング・食事プランの作成に使うため、
+以下の項目を分析してください。
+
+参考情報：
+{context_info}
+
+分析項目：
+・推定される体脂肪率の範囲（％、目安として）
+・お腹周りの脂肪の付き方
+・全体的な筋肉量（多い/普通/少ない）
+・体型の特徴（1文）
+
+写真が体型を判断できないもの（顔のみ、服を着ていて
+体型が見えない、人物が写っていない等）の場合は
+「体型を判断できる画像ではありません」とだけ答えてください。
+
+出力は短く、以下の形式で。
+
+体脂肪率目安：○〜○%
+お腹周り：（1文）
+筋肉量：（多い/普通/少ない）
+特徴：（1文）
+
+写真の人物を特定したり、実名を推測したりはしないでください。
+あくまで体型の特徴のみを分析してください。"""
+                            }
+                        ]
+                    }
+                ]
+            },
+            timeout=30
+        )
+        print(f'現在体型画像解析ステータス: {response.status_code}')
+        if response.status_code == 200:
+            data = response.json()
+            return data['content'][0]['text']
+        else:
+            print(f'現在体型画像解析失敗: {response.text[:300]}')
+            return None
+    except Exception as e:
+        print(f'現在体型画像解析エラー: {e}')
+        return None
+
 def process_registration(data):
     try:
         user_id = data.get('user_id')
 
+        # --- 現在の体脂肪率推定（①ウエスト ②つまみ厚み ③写真 のいずれか1つ） ---
+        bodyfat_method = data.get('bodyfat_method', 'スキップ')
+        body_fat_estimation_section = ''
+
+        if bodyfat_method == 'waist':
+            waist = data.get('waist')
+            if waist:
+                try:
+                    waist_f = float(waist)
+                    weight_f = float(data.get('weight', 0))
+                    gender = data.get('gender', '男性')
+
+                    # YMCA式での体脂肪率推定
+                    if gender == '女性':
+                        fat_mass = (4.15 * waist_f) - (0.082 * weight_f) - 76.76
+                    else:
+                        fat_mass = (4.15 * waist_f) - (0.082 * weight_f) - 98.42
+
+                    body_fat_pct = (fat_mass / weight_f) * 100 if weight_f > 0 else None
+
+                    if body_fat_pct is not None and 3 <= body_fat_pct <= 50:
+                        body_fat_estimation_section = f"""
+
+【体脂肪率推定の参考情報（ウエストサイズから計算）】
+ウエストサイズ：{waist}cm
+YMCA式による計算結果：体脂肪率 約{body_fat_pct:.1f}%
+（この数値をTDEE計算の参考にしてください。
+ユーザーに伝える際は「目安として」という前置きをすること）"""
+                    else:
+                        body_fat_estimation_section = """
+
+【体脂肪率推定の参考情報】
+ウエストサイズからの計算が非現実的な値になったため、
+日本人の平均値（男性20%・女性28%）を使ってください。"""
+                except (ValueError, TypeError):
+                    pass
+
+        elif bodyfat_method == 'pinch':
+            pinch = data.get('pinch_thickness')
+            if pinch:
+                gender = data.get('gender', '男性')
+
+                # つまみ厚みの選択肢を皮下脂肪厚A（mm）に変換
+                # つまむ動作自体が皮膚を二重に折った厚みのため
+                # 上腕後部＋肩甲骨下部の合計値（A）として直接使う
+                pinch_to_a = {
+                    'つまめない': 10,
+                    '第一関節程度': 20,
+                    '第二関節程度': 35,
+                    'しっかりつまめる': 55
+                }
+                a_total = pinch_to_a.get(pinch)
+
+                if a_total is not None:
+                    # 長嶺・鈴木の式による身体密度(D)
+                    if gender == '女性':
+                        body_density = 1.0897 - (0.00133 * a_total)
+                    else:
+                        body_density = 1.0913 - (0.00116 * a_total)
+
+                    # Brozekらの式による体脂肪率
+                    estimated_pct = (4.570 / body_density - 4.142) * 100
+
+                    if 3 <= estimated_pct <= 50:
+                        body_fat_estimation_section = f"""
+
+【体脂肪率推定の参考情報（キャリパー法・長嶺鈴木式）】
+お腹をつまんだ厚み：{pinch}
+キャリパー法による計算結果：体脂肪率 約{estimated_pct:.1f}%
+（つまみ厚みから皮下脂肪厚を簡易推定し、
+長嶺・鈴木の式とBrozek式で算出した値。
+TDEE計算の参考にしてください。
+ユーザーに伝える際は「目安として」という前置きをすること）"""
+                    else:
+                        body_fat_estimation_section = """
+
+【体脂肪率推定の参考情報】
+つまみ厚みからの計算が非現実的な値になったため、
+日本人の平均値（男性20%・女性28%）を使ってください。"""
+
+        elif bodyfat_method == 'photo':
+            current_image_b64 = data.get('current_image')
+            if current_image_b64:
+                print(f'現在の体型画像を解析中: {user_id}')
+                context_for_image = f"性別：{data.get('gender')}、身長：{data.get('height')}cm、体重：{data.get('weight')}kg"
+                result = analyze_current_body_image(current_image_b64, context_for_image)
+                if result:
+                    body_fat_estimation_section = f"""
+
+【体脂肪率推定の参考情報（写真解析）】
+{result}
+（この画像解析結果をTDEE計算の参考にしてください。
+あくまで推定値として扱い、ユーザーに伝える際は
+「目安として」という前置きをすること）"""
+
+        # --- 目標体型（テキスト or 画像） ---
         goal_image_analysis = ''
         goal_image_b64 = data.get('goal_image')
         if goal_image_b64:
@@ -353,7 +520,7 @@ def process_registration(data):
 筋トレ歴：{data.get('training_history')}
 1回の所要時間：{data.get('training_duration')}
 トレーニング時間帯：{data.get('training_time')}
-1日の歩数：{data.get('daily_steps')}"""
+1日の歩数：{data.get('daily_steps')}{body_fat_estimation_section}"""
 
         print(f'登録データをDifyに送信: {user_id}')
         answer, new_conv_id = ask_dify(user_id, summary_message, '')
