@@ -612,7 +612,9 @@ const SERVER_URL = 'https://your-coach.onrender.com/liff_register';
 let currentStep = 1;
 let answers = {};
 let goalImageBase64 = null;
+let goalImageType = 'image/jpeg';
 let currentImageBase64 = null;
+let currentImageType = 'image/jpeg';
 let bodyfatMethod = null;
 let liffUserId = null;
 
@@ -994,6 +996,7 @@ if (goalImageInput) {
     reader.onload = function(e) {
       const fullDataUrl = e.target.result;
       goalImageBase64 = fullDataUrl.split(',')[1];
+      goalImageType = file.type || 'image/jpeg';
       goalImagePreview.src = fullDataUrl;
       goalImagePreviewWrap.style.display = 'block';
       goalImageLabel.style.display = 'none';
@@ -1038,6 +1041,7 @@ if (currentImageInput) {
     reader.onload = function(e) {
       const fullDataUrl = e.target.result;
       currentImageBase64 = fullDataUrl.split(',')[1];
+      currentImageType = file.type || 'image/jpeg';
       currentImagePreview.src = fullDataUrl;
       currentImagePreviewWrap.style.display = 'block';
       currentImageLabel.style.display = 'none';
@@ -1089,8 +1093,10 @@ async function submitForm() {
     waist: bodyfatMethod === 'waist' ? answers['step5'] : null,
     pinch_thickness: bodyfatMethod === 'pinch' ? answers['step5'] : null,
     current_image: bodyfatMethod === 'photo' ? currentImageBase64 : null,
+    current_image_type: bodyfatMethod === 'photo' ? currentImageType : null,
     goal: answers['step6'],
     goal_image: goalImageBase64,
+    goal_image_type: goalImageBase64 ? goalImageType : null,
     goal_weight: answers['step7'],
     deadline: answers['step8'],
     start_date: answers['step9'],
