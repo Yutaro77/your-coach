@@ -398,6 +398,179 @@ def analyze_current_body_image(image_base64, context_info='', media_type='image/
         print(f'現在体型画像解析エラー: {e}')
         return None
 
+def calc_bmr(gender, weight, height, age):
+    """Mifflin-St Jeor式でBMRを計算する"""
+    if gender == '女性':
+        return (10 * weight) + (6.25 * height) - (5 * age) - 161
+    else:
+        return (10 * weight) + (6.25 * height) - (5 * age) + 5
+
+def calc_tdee_multiplier(daily_steps):
+    """歩数からTDEE倍率を決める"""
+    mapping = {
+        '2000歩未満': 1.2,
+        '2000〜5000歩': 1.375,
+        '5000〜8000歩': 1.55,
+        '8000〜12000歩': 1.725,
+        '12000歩以上': 1.9,
+    }
+    # 「わからない」「デスクワーク」「立ち仕事」「体を使う仕事」等は1.375をデフォルトに
+    return mapping.get(daily_steps, 1.375)
+
+def calc_training_day_addon(training_duration):
+    """トレーニング日の追加消費カロリー"""
+    mapping = {
+        '30分': 200,
+        '45分': 300,
+        '60分': 400,
+        '90分以上': 500,
+    }
+    return mapping.get(training_duration, 300)
+
+def extract_body_fat_pct(body_fat_estimation_section, gender):
+    """body_fat_estimation_sectionのテキストから「約○%」を抜き出す。
+    見つからなければ日本人平均値を返す。"""
+    import re
+    match = re.search(r'約(\d+(?:\.\d+)?)\s*%', body_fat_estimation_section)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
+    # 画像解析結果の「○〜○%」形式にも対応
+    match2 = re.search(r'(\d+(?:\.\d+)?)\s*[〜~]\s*(\d+(?:\.\d+)?)\s*%', body_fat_estimation_section)
+    if match2:
+        try:
+            return (float(match2.group(1)) + float(match2.group(2))) / 2
+        except ValueError:
+            pass
+    return 20.0 if gender != '女性' else 28.0
+
+def determine_goal_body_fat_pct(goal, gender, current_bf_pct, goal_image_analysis_text):
+    """目標体脂肪率を決定する"""
+    if '画像' in (goal or '') or goal_image_analysis_text:
+        # 画像解析結果から目標体脂肪率を抜き出す
+        import re
+        match = re.search(r'体脂肪率目安[：:]\s*(\d+(?:\.\d+)?)\s*[〜~]\s*(\d+(?:\.\d+)?)\s*%', goal_image_analysis_text or '')
+        if match:
+            return (float(match.group(1)) + float(match.group(2))) / 2
+        return 15.0 if gender != '女性' else 23.0
+    elif goal in ('絞りたい', '両方'):
+        return 12.0 if gender != '女性' else 23.0
+    elif goal == '増やしたい':
+        return current_bf_pct
+    else:
+        return current_bf_pct
+
+def calc_goal_weight_from_bf(current_weight, current_bf_pct, goal_bf_pct):
+    """現在の体脂肪率と目標体脂肪率から目標体重を逆算する"""
+    lean_mass = current_weight * (1 - current_bf_pct / 100)
+    if goal_bf_pct >= 100:
+        return current_weight
+    return lean_mass / (1 - goal_bf_pct / 100)
+
+def build_three_plans(total_kcal_deficit):
+    """総kcalマイナスから3プランの日数を計算する。
+    増量の場合（total_kcal_deficit<=0）はNoneを返す。"""
+    if total_kcal_deficit is None or total_kcal_deficit <= 0:
+        return None
+
+    plans = []
+    for label, daily_kcal, freq in [
+        ('集中プラン', 500, '週4回'),
+        ('標準プラン', 350, '週3回'),
+        ('ゆっくりプラン', 200, '週2回'),
+    ]:
+        days = round(total_kcal_deficit / daily_kcal)
+        plans.append({
+            'label': label,
+            'days': days,
+            'daily_kcal': daily_kcal,
+            'frequency': freq,
+        })
+    return plans
+
+def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
+    """登録データからTDEE・目標体脂肪率・3プランを計算し、
+    Difyに渡すための『計算済みサマリーテキスト』を作る"""
+    try:
+        gender = data.get('gender', '男性')
+        age = float(data.get('age', 30))
+        height = float(data.get('height', 170))
+        weight = float(data.get('weight', 70))
+        goal = data.get('goal', '')
+        daily_steps = data.get('daily_steps', '')
+        training_duration = data.get('training_duration', '60分')
+
+        # ① BMR・TDEE計算
+        bmr = calc_bmr(gender, weight, height, age)
+        multiplier = calc_tdee_multiplier(daily_steps)
+        tdee = bmr * multiplier
+        training_day_kcal = tdee + calc_training_day_addon(training_duration)
+
+        # ② 現在の体脂肪率
+        current_bf_pct = extract_body_fat_pct(body_fat_estimation_section, gender)
+
+        # ③ 目標体脂肪率
+        goal_bf_pct = determine_goal_body_fat_pct(goal, gender, current_bf_pct, goal_image_analysis_text)
+
+        # ④ 目標体重（画像目標の場合は逆算、それ以外はフォーム入力値を優先）
+        goal_weight_input = data.get('goal_weight')
+        if goal_weight_input and goal_weight_input != 'スキップ':
+            try:
+                goal_weight = float(goal_weight_input)
+            except (ValueError, TypeError):
+                goal_weight = calc_goal_weight_from_bf(weight, current_bf_pct, goal_bf_pct)
+        else:
+            goal_weight = calc_goal_weight_from_bf(weight, current_bf_pct, goal_bf_pct)
+            # 筋肉量が現状より多いと判断される場合は1〜3kg上方調整
+            if goal_image_analysis_text and ('多い' in goal_image_analysis_text or '厚み' in goal_image_analysis_text):
+                goal_weight += 2
+
+        # ⑤ 減らすべき脂肪量・総kcalマイナス
+        current_fat_mass = weight * (current_bf_pct / 100)
+        goal_fat_mass = goal_weight * (goal_bf_pct / 100)
+        fat_to_lose = current_fat_mass - goal_fat_mass
+        total_kcal_deficit = fat_to_lose * 7700 if fat_to_lose > 0 else None
+
+        # ⑥ 筋肉量の差が大きいかどうかの簡易判定（画像目標の場合のみ）
+        muscle_gap_large = False
+        if goal_image_analysis_text and ('多い' in goal_image_analysis_text or '厚み' in goal_image_analysis_text or 'カット' in goal_image_analysis_text):
+            muscle_gap_large = True
+
+        # ⑦ 3プラン計算
+        plans = build_three_plans(total_kcal_deficit)
+
+        plans_text = ''
+        if plans:
+            plans_text = '\n'.join([
+                f"・{p['label']}：約{p['days']}日（1日{p['daily_kcal']}kcalマイナス・{p['frequency']}）"
+                for p in plans
+            ])
+        else:
+            plans_text = '（増量目標のため、カロリーマイナスの3プランは対象外。フェーズ2の増量ロジックを使うこと）'
+
+        summary = f"""
+【計算済みサマリー（この数値をそのまま使う。再計算しないこと）】
+BMR：{bmr:.0f}kcal
+TDEE（非トレ日）：{tdee:.0f}kcal
+TDEE（トレ日）：{training_day_kcal:.0f}kcal
+現在の体脂肪率（推定）：約{current_bf_pct:.1f}%
+目標体脂肪率：約{goal_bf_pct:.1f}%
+目標体重（計算済み）：約{goal_weight:.1f}kg
+減らすべき脂肪量：約{fat_to_lose:.1f}kg
+必要な総kcalマイナス：{f"約{total_kcal_deficit:.0f}kcal" if total_kcal_deficit else "なし（増量目標）"}
+
+3つのプラン（この日数・kcalマイナスをそのまま提示する）：
+{plans_text}
+
+筋肉量の差が大きいと判定：{'はい（2フェーズ戦略を提案すること）' if muscle_gap_large else 'いいえ'}
+"""
+        return summary
+    except Exception as e:
+        print(f'プラン計算エラー: {e}')
+        return ''
+
 def process_registration(data):
     try:
         user_id = data.get('user_id')
@@ -508,6 +681,9 @@ TDEE計算の参考にしてください。
             if result:
                 goal_image_analysis = f"\n目標体型の画像解析結果：\n{result}\n（この解析結果を目標設定の参考にしてください。あくまで推定値として扱ってください）"
 
+        # --- 計算済みサマリーをPython側で確定する ---
+        calculated_summary = calc_plan_data(data, body_fat_estimation_section, goal_image_analysis)
+
         summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
 
 性別：{data.get('gender')}
@@ -522,7 +698,8 @@ TDEE計算の参考にしてください。
 筋トレ歴：{data.get('training_history')}
 1回の所要時間：{data.get('training_duration')}
 トレーニング時間帯：{data.get('training_time')}
-1日の歩数：{data.get('daily_steps')}{body_fat_estimation_section}"""
+1日の歩数：{data.get('daily_steps')}{body_fat_estimation_section}
+{calculated_summary}"""
 
         print(f'登録データをDifyに送信: {user_id}')
         answer, new_conv_id = ask_dify(user_id, summary_message, '')
