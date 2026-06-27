@@ -92,8 +92,29 @@ def verify_signature(body, signature):
     ).digest()
     return base64.b64encode(hash).decode('utf-8') == signature
 
-def send_line_push(user_id, message):
+def build_quick_reply(items):
+    """LINEのクイックリプライ用オブジェクトを作る。
+    itemsは選択肢の文字列リスト。押すとその文字列が
+    そのままメッセージとして送られる。"""
+    return {
+        'items': [
+            {
+                'type': 'action',
+                'action': {
+                    'type': 'message',
+                    'label': label[:20],
+                    'text': label
+                }
+            }
+            for label in items
+        ]
+    }
+
+def send_line_push(user_id, message, quick_reply=None):
     try:
+        message_obj = {'type': 'text', 'text': message}
+        if quick_reply:
+            message_obj['quickReply'] = build_quick_reply(quick_reply)
         line_response = requests.post(
             'https://api.line.me/v2/bot/message/push',
             headers={
@@ -102,7 +123,7 @@ def send_line_push(user_id, message):
             },
             json={
                 'to': user_id,
-                'messages': [{'type': 'text', 'text': message}]
+                'messages': [message_obj]
             }
         )
         print(f'LINE Pushステータス: {line_response.status_code}')
@@ -165,6 +186,7 @@ PLAN_KEYWORDS = {
     '集中': ['集中'],
     '標準': ['標準'],
     'ゆっくり': ['ゆっくり'],
+    'しっかり': ['しっかり'],
 }
 
 def resolve_plan_choice(text):
@@ -674,6 +696,7 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
                 for p in plans
             ])
             extra_line = f"減らすべき脂肪量：約{fat_to_lose:.1f}kg\n必要な総kcalマイナス：約{total_kcal_deficit:.0f}kcal"
+            plan_labels = [p['label'] for p in plans]
         elif bulk_plans:
             plans_label = '3つのプラン（増やす方向。この日数・kcal余剰の幅をそのまま提示する）'
             plans_text = '\n'.join([
@@ -681,10 +704,12 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
                 for p in bulk_plans
             ])
             extra_line = f"増やすべき体重：約{weight_to_gain:.1f}kg"
+            plan_labels = [p['label'] for p in bulk_plans]
         else:
             plans_label = '3つのプラン'
             plans_text = '（このユーザーは現状維持に近いため、3プランの提示は不要。現状維持の方針を伝えること）'
             extra_line = '（増減なし、または僅少）'
+            plan_labels = []
 
         summary = f"""
 【計算済みサマリー（この数値をそのまま使う。再計算しないこと）】
@@ -701,10 +726,10 @@ TDEE（トレ日）：{training_day_kcal:.0f}kcal
 
 筋肉量の差が大きいと判定：{'はい（2フェーズ戦略を提案すること）' if muscle_gap_large else 'いいえ'}
 """
-        return summary
+        return summary, plan_labels
     except Exception as e:
         print(f'プラン計算エラー: {e}')
-        return ''
+        return '', []
 
 def process_registration(data):
     try:
@@ -817,7 +842,7 @@ TDEE計算の参考にしてください。
                 goal_image_analysis = f"\n目標体型の画像解析結果：\n{result}\n（この解析結果を目標設定の参考にしてください。あくまで推定値として扱ってください）"
 
         # --- 計算済みサマリーをPython側で確定する ---
-        calculated_summary = calc_plan_data(data, body_fat_estimation_section, goal_image_analysis)
+        calculated_summary, plan_labels = calc_plan_data(data, body_fat_estimation_section, goal_image_analysis)
 
         summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
 
@@ -843,7 +868,7 @@ TDEE計算の参考にしてください。
         if answer:
             set_conversation_id(user_id, new_conv_id)
             update_user_state(user_id, {'status': 'awaiting_plan'})
-            send_line_push(user_id, answer)
+            send_line_push(user_id, answer, quick_reply=plan_labels if plan_labels else None)
             main_menu_id = os.environ.get('MAIN_RICH_MENU_ID')
             if main_menu_id:
                 link_rich_menu(user_id, main_menu_id)
