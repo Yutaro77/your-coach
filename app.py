@@ -100,7 +100,35 @@ def send_line_push(user_id, message):
     except Exception as e:
         print(f'LINE送信エラー: {e}')
 
-def ask_dify(user_id, message, conversation_id=''):
+# --- Dify Chatflow用：メッセージ種別の判定とinputs組み立て ---
+
+BUTTON_TO_TYPE = {
+    "起床": "起床",
+    "トレーニング開始": "トレーニング開始",
+    "就寝": "就寝",
+    "トレーニングメニュー": "トレーニングメニュー",
+    "食事プログラム": "食事プログラム",
+    "このアプリの使い方": "使い方",
+}
+
+def resolve_message_type(line_text):
+    """ボタンのテキストをmessage_typeに変換する。
+    どれにも当てはまらなければフリー会話扱い"""
+    return BUTTON_TO_TYPE.get(line_text.strip(), "フリー会話")
+
+def build_dify_inputs(message_type):
+    """Chatflowが必須とする6変数を組み立てる。
+    phase以下4つは仮値（次フェーズで実データに差し替え予定）"""
+    return {
+        "message_type": message_type,
+        "phase": "phase1",
+        "plan_type": "標準",
+        "is_first_day": "false",
+        "today_is_training_day": "true",
+        "missed_last_session": "false",
+    }
+
+def ask_dify(user_id, message, conversation_id='', inputs=None):
     dify_response = requests.post(
         DIFY_API_URL,
         headers={
@@ -108,7 +136,7 @@ def ask_dify(user_id, message, conversation_id=''):
             'Content-Type': 'application/json'
         },
         json={
-            'inputs': {},
+            'inputs': inputs or {},
             'query': message,
             'response_mode': 'blocking',
             'conversation_id': conversation_id,
@@ -137,8 +165,11 @@ def process_message(user_id, user_message):
         # 実際の日付情報をメッセージに付与する
         message_with_date = f"[今日の日付：{today_str}]\n{user_message}"
 
+        message_type = resolve_message_type(user_message)
+        dify_inputs = build_dify_inputs(message_type)
+
         conversation_id = get_conversation_id(user_id)
-        answer, new_conv_id = ask_dify(user_id, message_with_date, conversation_id)
+        answer, new_conv_id = ask_dify(user_id, message_with_date, conversation_id, dify_inputs)
         if answer:
             set_conversation_id(user_id, new_conv_id)
             send_line_push(user_id, answer)
@@ -702,7 +733,8 @@ TDEE計算の参考にしてください。
 {calculated_summary}"""
 
         print(f'登録データをDifyに送信: {user_id}')
-        answer, new_conv_id = ask_dify(user_id, summary_message, '')
+        dify_inputs = build_dify_inputs("初回登録")
+        answer, new_conv_id = ask_dify(user_id, summary_message, '', dify_inputs)
 
         if answer:
             set_conversation_id(user_id, new_conv_id)
