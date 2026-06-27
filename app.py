@@ -154,6 +154,16 @@ def ask_dify(user_id, message, conversation_id='', inputs=None):
 
 def process_message(user_id, user_message):
     try:
+        conversation_id = get_conversation_id(user_id)
+
+        if not conversation_id:
+            liff_url = os.environ.get('LIFF_REGISTER_URL', '')
+            send_line_push(
+                user_id,
+                f'まずは登録をお願いします！\n{liff_url}\n登録が終わったら、いろいろ話しかけてね。'
+            )
+            return
+
         from datetime import datetime
         import pytz
         jst = pytz.timezone('Asia/Tokyo')
@@ -168,7 +178,6 @@ def process_message(user_id, user_message):
         message_type = resolve_message_type(user_message)
         dify_inputs = build_dify_inputs(message_type)
 
-        conversation_id = get_conversation_id(user_id)
         answer, new_conv_id = ask_dify(user_id, message_with_date, conversation_id, dify_inputs)
         if answer:
             set_conversation_id(user_id, new_conv_id)
