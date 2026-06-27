@@ -509,15 +509,24 @@ def calc_goal_weight_from_bf(current_weight, current_bf_pct, goal_bf_pct):
         return current_weight
     return lean_mass / (1 - goal_bf_pct / 100)
 
-def build_three_plans(total_kcal_deficit):
+def build_three_plans(total_kcal_deficit, gym_frequency='週4回'):
     """総kcalマイナスから3プランの日数を計算する。
-    増量の場合（total_kcal_deficit<=0）はNoneを返す。"""
+    増量の場合（total_kcal_deficit<=0）はNoneを返す。
+    集中プランの頻度表示は、登録時の回答（週4回/週5回/週6回）に合わせる。
+    標準・ゆっくりは固定（週3回・週2回）のまま。"""
     if total_kcal_deficit is None or total_kcal_deficit <= 0:
         return None
 
+    intensive_freq_map = {
+        '週4回': '週4回',
+        '週5回': '週5回',
+        '週6回': '週6回',
+    }
+    intensive_freq = intensive_freq_map.get(gym_frequency, '週4回')
+
     plans = []
     for label, daily_kcal, freq in [
-        ('集中プラン', 500, '週4回'),
+        ('集中プラン', 500, intensive_freq),
         ('標準プラン', 350, '週3回'),
         ('ゆっくりプラン', 200, '週2回'),
     ]:
@@ -579,7 +588,7 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
             muscle_gap_large = True
 
         # ⑦ 3プラン計算
-        plans = build_three_plans(total_kcal_deficit)
+        plans = build_three_plans(total_kcal_deficit, data.get('gym_frequency', '週4回'))
 
         plans_text = ''
         if plans:
