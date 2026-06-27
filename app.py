@@ -161,6 +161,38 @@ def ask_dify(user_id, message, conversation_id='', inputs=None):
         print(f'Dify失敗: {dify_response.text[:300]}')
         return None, None
 
+PLAN_KEYWORDS = {
+    '集中': ['集中'],
+    '標準': ['標準'],
+    'ゆっくり': ['ゆっくり'],
+}
+
+def resolve_plan_choice(text):
+    """ユーザーの自由文からプラン選択（集中/標準/ゆっくり）を検知する。
+    どれにも当てはまらなければNoneを返す。"""
+    text = text.strip()
+    if '①' in text or text in ('1', '１'):
+        return '集中'
+    if '②' in text or text in ('2', '２'):
+        return '標準'
+    if '③' in text or text in ('3', '３'):
+        return 'ゆっくり'
+    for plan, keywords in PLAN_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return plan
+    return None
+
+def handle_plan_confirmed(user_id, plan_choice):
+    """プラン確定を検知した時の処理。
+    週間サイクル生成・Sheets保存・出力（C・D・E・F）は次のステップで実装する。
+    今は検知できたことを確認するための仮実装。"""
+    print(f'プラン確定を検知: user={user_id} plan={plan_choice}')
+    update_user_state(user_id, {'status': 'plan_confirmed', 'plan_type': plan_choice})
+    send_line_push(
+        user_id,
+        f'「{plan_choice}プラン」を選んだね！\n（週間メニューの作成は次のステップで実装予定だよ）'
+    )
+
 def process_message(user_id, user_message):
     try:
         conversation_id = get_conversation_id(user_id)
@@ -172,6 +204,14 @@ def process_message(user_id, user_message):
                 f'まずは登録をお願いします！\n{liff_url}\n登録が終わったら、いろいろ話しかけてね。'
             )
             return
+
+        state = get_user_state(user_id)
+        if state.get('status') == 'awaiting_plan':
+            plan_choice = resolve_plan_choice(user_message)
+            if plan_choice:
+                handle_plan_confirmed(user_id, plan_choice)
+                return
+            # プランの言葉にマッチしなければ、通常のフリー会話として処理を続ける
 
         from datetime import datetime
         import pytz
@@ -548,6 +588,30 @@ def build_three_plans(total_kcal_deficit, gym_frequency='週4回'):
         })
     return plans
 
+def build_bulk_plans(weight_to_gain_kg):
+    """増やすべき体重(kg)から、3段階の増量プランの日数を計算する。
+    増量が不要な場合（weight_to_gain_kg<=0）はNoneを返す。
+    日数は「週○kgペース」から直接計算し、kcal幅は表示用の目安として
+    そのまま使う（AIに作らせないための固定値）。"""
+    if weight_to_gain_kg is None or weight_to_gain_kg <= 0:
+        return None
+
+    plans = []
+    for label, weekly_kg, kcal_low, kcal_high in [
+        ('ゆっくり増量プラン', 0.25, 200, 300),
+        ('標準増量プラン', 0.5, 400, 600),
+        ('しっかり増量プラン', 0.75, 600, 900),
+    ]:
+        days = round((weight_to_gain_kg / weekly_kg) * 7)
+        plans.append({
+            'label': label,
+            'days': days,
+            'weekly_kg': weekly_kg,
+            'kcal_low': kcal_low,
+            'kcal_high': kcal_high,
+        })
+    return plans
+
 def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
     """登録データからTDEE・目標体脂肪率・3プランを計算し、
     Difyに渡すための『計算済みサマリーテキスト』を作る"""
@@ -585,28 +649,42 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
             if goal_image_analysis_text and ('多い' in goal_image_analysis_text or '厚み' in goal_image_analysis_text):
                 goal_weight += 2
 
-        # ⑤ 減らすべき脂肪量・総kcalマイナス
+        # ⑤ 減らすべき脂肪量・総kcalマイナス（絞る方向）
         current_fat_mass = weight * (current_bf_pct / 100)
         goal_fat_mass = goal_weight * (goal_bf_pct / 100)
         fat_to_lose = current_fat_mass - goal_fat_mass
         total_kcal_deficit = fat_to_lose * 7700 if fat_to_lose > 0 else None
+
+        # ⑤b 増やすべき体重（増やす方向。絞る方向の数値が出ない場合のみ使う）
+        weight_to_gain = goal_weight - weight if total_kcal_deficit is None else None
 
         # ⑥ 筋肉量の差が大きいかどうかの簡易判定（画像目標の場合のみ）
         muscle_gap_large = False
         if goal_image_analysis_text and ('多い' in goal_image_analysis_text or '厚み' in goal_image_analysis_text or 'カット' in goal_image_analysis_text):
             muscle_gap_large = True
 
-        # ⑦ 3プラン計算
+        # ⑦ 3プラン計算（絞る方向 or 増やす方向のどちらか一方だけ算出される）
         plans = build_three_plans(total_kcal_deficit, data.get('gym_frequency', '週4回'))
+        bulk_plans = build_bulk_plans(weight_to_gain)
 
-        plans_text = ''
         if plans:
+            plans_label = '3つのプラン（絞る方向。この日数・kcalマイナスをそのまま提示する）'
             plans_text = '\n'.join([
                 f"・{p['label']}：約{p['days']}日（1日{p['daily_kcal']}kcalマイナス・{p['frequency']}）"
                 for p in plans
             ])
+            extra_line = f"減らすべき脂肪量：約{fat_to_lose:.1f}kg\n必要な総kcalマイナス：約{total_kcal_deficit:.0f}kcal"
+        elif bulk_plans:
+            plans_label = '3つのプラン（増やす方向。この日数・kcal余剰の幅をそのまま提示する）'
+            plans_text = '\n'.join([
+                f"・{p['label']}：約{p['days']}日（週{p['weekly_kg']}kg増量ペース・1日{p['kcal_low']}〜{p['kcal_high']}kcal余剰）"
+                for p in bulk_plans
+            ])
+            extra_line = f"増やすべき体重：約{weight_to_gain:.1f}kg"
         else:
-            plans_text = '（増量目標のため、カロリーマイナスの3プランは対象外。フェーズ2の増量ロジックを使うこと）'
+            plans_label = '3つのプラン'
+            plans_text = '（このユーザーは現状維持に近いため、3プランの提示は不要。現状維持の方針を伝えること）'
+            extra_line = '（増減なし、または僅少）'
 
         summary = f"""
 【計算済みサマリー（この数値をそのまま使う。再計算しないこと）】
@@ -616,10 +694,9 @@ TDEE（トレ日）：{training_day_kcal:.0f}kcal
 現在の体脂肪率（推定）：約{current_bf_pct:.1f}%
 目標体脂肪率：約{goal_bf_pct:.1f}%
 目標体重（計算済み）：約{goal_weight:.1f}kg
-減らすべき脂肪量：約{fat_to_lose:.1f}kg
-必要な総kcalマイナス：{f"約{total_kcal_deficit:.0f}kcal" if total_kcal_deficit else "なし（増量目標）"}
+{extra_line}
 
-3つのプラン（この日数・kcalマイナスをそのまま提示する）：
+{plans_label}：
 {plans_text}
 
 筋肉量の差が大きいと判定：{'はい（2フェーズ戦略を提案すること）' if muscle_gap_large else 'いいえ'}
@@ -765,6 +842,7 @@ TDEE計算の参考にしてください。
 
         if answer:
             set_conversation_id(user_id, new_conv_id)
+            update_user_state(user_id, {'status': 'awaiting_plan'})
             send_line_push(user_id, answer)
             main_menu_id = os.environ.get('MAIN_RICH_MENU_ID')
             if main_menu_id:
