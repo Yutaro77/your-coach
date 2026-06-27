@@ -182,38 +182,160 @@ def ask_dify(user_id, message, conversation_id='', inputs=None):
         print(f'Dify失敗: {dify_response.text[:300]}')
         return None, None
 
-PLAN_KEYWORDS = {
-    '集中': ['集中'],
-    '標準': ['標準'],
-    'ゆっくり': ['ゆっくり'],
-    'しっかり': ['しっかり'],
-}
-
 def resolve_plan_choice(text):
-    """ユーザーの自由文からプラン選択（集中/標準/ゆっくり）を検知する。
-    どれにも当てはまらなければNoneを返す。"""
+    """ボタン文字列（例：「集中減量プラン」）から、
+    強度（集中/標準/ゆっくり）と方向（減量/増量）の両方を検知する。
+    どちらかが読み取れなければNoneを返す（自由文として処理を続ける）。"""
     text = text.strip()
-    if '①' in text or text in ('1', '１'):
-        return '集中'
-    if '②' in text or text in ('2', '２'):
-        return '標準'
-    if '③' in text or text in ('3', '３'):
-        return 'ゆっくり'
-    for plan, keywords in PLAN_KEYWORDS.items():
-        if any(kw in text for kw in keywords):
-            return plan
+
+    intensity = None
+    for key in ['集中', '標準', 'ゆっくり']:
+        if key in text:
+            intensity = key
+            break
+    if not intensity:
+        return None
+
+    if '増量' in text:
+        return intensity, 'bulk'
+    if '減量' in text:
+        return intensity, 'cut'
     return None
 
-def handle_plan_confirmed(user_id, plan_choice):
+def get_split_pattern_text(frequency):
+    """頻度ごとの部位分割パターン（サイクル番号ベース、曜日には触れない）"""
+    patterns = {
+        1: '1回目：全身',
+        2: '1回目：上半身\n2回目：下半身',
+        3: '1回目：胸\n2回目：背中\n3回目：脚',
+        4: '1回目：胸\n2回目：背中\n3回目：脚\n4回目：肩・腕',
+        5: '1回目：胸\n2回目：背中\n3回目：脚\n4回目：肩\n5回目：腕',
+        6: '1回目：Push（胸・肩・三頭）\n2回目：Pull（背中・二頭）\n3回目：Legs（脚）\n4回目：Push\n5回目：Pull\n6回目：Legs',
+    }
+    return patterns.get(frequency, patterns[3])
+
+def determine_training_frequency(plan_choice, goal_direction, gym_frequency):
+    """選択したプランと目標方向から、実際の週間トレーニング回数(1-6)を決定する。
+    絞る方向の標準/ゆっくりは固定回数。それ以外（集中・増量系）は
+    登録時に答えたgym_frequencyをそのまま使う。"""
+    freq_map = {'週1回': 1, '週2回': 2, '週3回': 3, '週4回': 4, '週5回': 5, '週6回': 6}
+    gym_freq_num = freq_map.get(gym_frequency, 3)
+
+    if goal_direction == 'cut':
+        fixed_freq = {'標準': 3, 'ゆっくり': 2}
+        if plan_choice in fixed_freq:
+            return fixed_freq[plan_choice]
+
+    return gym_freq_num
+
+def generate_weekly_cycle(gender, training_history, training_location, frequency):
+    """Claudeに、登録プロフィールに基づいた週間トレーニングサイクルを
+    1回だけ考えてもらい、JSON形式で受け取る（以降はこの結果を使い回す）"""
+    split_text = get_split_pattern_text(frequency)
+
+    prompt_text = f"""あなたはパーソナルトレーナーです。以下の条件に基づいて、
+{frequency}回サイクルのウェイトトレーニングメニューを作成してください。
+
+【条件】
+性別：{gender}
+筋トレ歴：{training_history}
+トレーニング場所：{training_location}
+週の頻度：{frequency}回
+
+【場所による制約】
+・ジム：マシン・フリーウェイト・ダンベルを自由に使ってよい
+・自宅（器具あり）：ダンベル・チューブで代替できる種目にする
+・自宅（器具なし）：自重種目のみにする（マシン・バーベル種目は使わない）
+
+【性別による方針】
+・男性：高重量・複合種目重視
+・女性：臀部・脚・体幹重視、中重量・高レップ
+
+【筋トレ歴による方針】
+・始めたばかり：フォームが安定しやすい種目を優先（マシン中心など）
+・1〜3年・3年以上：フリーウェイトや応用種目も組み込んでよい
+
+【サイクルの部位分割（{frequency}回の場合）】
+{split_text}
+
+【出力ルール】
+・各セッションにつき3〜4種目
+・JSON以外の文章は一切出力しない（説明文や前置きも禁止）
+・以下の形式そのままで出力する
+
+{{
+  "frequency": {frequency},
+  "sessions": [
+    {{"session_number": 1, "split_label": "（部位名）", "exercises": [
+      {{"name": "種目名", "sets": 3, "reps": "8-10"}}
+    ]}}
+  ]
+}}"""
+
+    try:
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'claude-sonnet-4-5',
+                'max_tokens': 1500,
+                'messages': [
+                    {'role': 'user', 'content': prompt_text}
+                ]
+            },
+            timeout=30
+        )
+        print(f'週間サイクル生成ステータス: {response.status_code}')
+        if response.status_code == 200:
+            data = response.json()
+            raw_text = data['content'][0]['text']
+            cleaned = raw_text.replace('```json', '').replace('```', '').strip()
+            return json.loads(cleaned)
+        else:
+            print(f'週間サイクル生成失敗: {response.text[:300]}')
+            return None
+    except Exception as e:
+        print(f'週間サイクル生成エラー: {e}')
+        return None
+
+def handle_plan_confirmed(user_id, plan_choice, goal_direction):
     """プラン確定を検知した時の処理。
-    週間サイクル生成・Sheets保存・出力（C・D・E・F）は次のステップで実装する。
-    今は検知できたことを確認するための仮実装。"""
-    print(f'プラン確定を検知: user={user_id} plan={plan_choice}')
-    update_user_state(user_id, {'status': 'plan_confirmed', 'plan_type': plan_choice})
-    send_line_push(
-        user_id,
-        f'「{plan_choice}プラン」を選んだね！\n（週間メニューの作成は次のステップで実装予定だよ）'
+    頻度を決定し、AIに1回だけ種目を考えてもらってSheetsに保存する。
+    出力フォーマット（トレーニングスケジュール概要等）は次のステップで作る。"""
+    print(f'プラン確定を検知: user={user_id} plan={plan_choice} direction={goal_direction}')
+    state = get_user_state(user_id)
+    gym_frequency = state.get('gym_frequency', '週3回')
+    frequency = determine_training_frequency(plan_choice, goal_direction, gym_frequency)
+
+    cycle_data = generate_weekly_cycle(
+        state.get('gender', '男性'),
+        state.get('training_history', '始めたばかり'),
+        state.get('training_location', 'ジム'),
+        frequency
     )
+
+    plan_label = f"{plan_choice}{'増量' if goal_direction == 'bulk' else '減量'}プラン"
+
+    if cycle_data:
+        update_user_state(user_id, {
+            'status': 'plan_confirmed',
+            'plan_type': plan_label,
+            'weekly_cycle': json.dumps(cycle_data, ensure_ascii=False)
+        })
+        send_line_push(
+            user_id,
+            f'「{plan_label}」で進めるね！\n週{frequency}回のメニューを組んだよ。\n（出力フォーマットは次のステップで作るよ）'
+        )
+    else:
+        update_user_state(user_id, {'status': 'plan_confirmed', 'plan_type': plan_label})
+        send_line_push(
+            user_id,
+            f'「{plan_label}」を選んだね！\n（メニュー作成でエラーが出たので、確認してまた連絡するね）'
+        )
 
 def process_message(user_id, user_message):
     try:
@@ -229,9 +351,10 @@ def process_message(user_id, user_message):
 
         state = get_user_state(user_id)
         if state.get('status') == 'awaiting_plan':
-            plan_choice = resolve_plan_choice(user_message)
-            if plan_choice:
-                handle_plan_confirmed(user_id, plan_choice)
+            parsed_plan = resolve_plan_choice(user_message)
+            if parsed_plan:
+                plan_choice, goal_direction = parsed_plan
+                handle_plan_confirmed(user_id, plan_choice, goal_direction)
                 return
             # プランの言葉にマッチしなければ、通常のフリー会話として処理を続ける
 
@@ -597,9 +720,9 @@ def build_three_plans(total_kcal_deficit, gym_frequency='週4回'):
 
     plans = []
     for label, daily_kcal, freq in [
-        ('集中プラン', 500, intensive_freq),
-        ('標準プラン', 350, '週3回'),
-        ('ゆっくりプラン', 200, '週2回'),
+        ('集中減量プラン', 500, intensive_freq),
+        ('標準減量プラン', 350, '週3回'),
+        ('ゆっくり減量プラン', 200, '週2回'),
     ]:
         days = round(total_kcal_deficit / daily_kcal)
         plans.append({
@@ -620,9 +743,9 @@ def build_bulk_plans(weight_to_gain_kg):
 
     plans = []
     for label, weekly_kg, kcal_low, kcal_high in [
-        ('ゆっくり増量プラン', 0.25, 200, 300),
+        ('集中増量プラン', 0.75, 600, 900),
         ('標準増量プラン', 0.5, 400, 600),
-        ('しっかり増量プラン', 0.75, 600, 900),
+        ('ゆっくり増量プラン', 0.25, 200, 300),
     ]:
         days = round((weight_to_gain_kg / weekly_kg) * 7)
         plans.append({
@@ -697,6 +820,7 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
             ])
             extra_line = f"減らすべき脂肪量：約{fat_to_lose:.1f}kg\n必要な総kcalマイナス：約{total_kcal_deficit:.0f}kcal"
             plan_labels = [p['label'] for p in plans]
+            goal_direction = 'cut'
         elif bulk_plans:
             plans_label = '3つのプラン（増やす方向。この日数・kcal余剰の幅をそのまま提示する）'
             plans_text = '\n'.join([
@@ -705,11 +829,13 @@ def calc_plan_data(data, body_fat_estimation_section, goal_image_analysis_text):
             ])
             extra_line = f"増やすべき体重：約{weight_to_gain:.1f}kg"
             plan_labels = [p['label'] for p in bulk_plans]
+            goal_direction = 'bulk'
         else:
             plans_label = '3つのプラン'
             plans_text = '（このユーザーは現状維持に近いため、3プランの提示は不要。現状維持の方針を伝えること）'
             extra_line = '（増減なし、または僅少）'
             plan_labels = []
+            goal_direction = 'maintain'
 
         summary = f"""
 【計算済みサマリー（この数値をそのまま使う。再計算しないこと）】
@@ -726,10 +852,10 @@ TDEE（トレ日）：{training_day_kcal:.0f}kcal
 
 筋肉量の差が大きいと判定：{'はい（2フェーズ戦略を提案すること）' if muscle_gap_large else 'いいえ'}
 """
-        return summary, plan_labels
+        return summary, plan_labels, goal_direction
     except Exception as e:
         print(f'プラン計算エラー: {e}')
-        return '', []
+        return '', [], 'maintain'
 
 def process_registration(data):
     try:
@@ -842,7 +968,7 @@ TDEE計算の参考にしてください。
                 goal_image_analysis = f"\n目標体型の画像解析結果：\n{result}\n（この解析結果を目標設定の参考にしてください。あくまで推定値として扱ってください）"
 
         # --- 計算済みサマリーをPython側で確定する ---
-        calculated_summary, plan_labels = calc_plan_data(data, body_fat_estimation_section, goal_image_analysis)
+        calculated_summary, plan_labels, goal_direction = calc_plan_data(data, body_fat_estimation_section, goal_image_analysis)
 
         summary_message = f"""初回登録フォームに回答しました。以下の情報をもとにプランを提示してください。
 
@@ -867,7 +993,14 @@ TDEE計算の参考にしてください。
 
         if answer:
             set_conversation_id(user_id, new_conv_id)
-            update_user_state(user_id, {'status': 'awaiting_plan'})
+            # プラン確定後（週間サイクル生成）に使うプロフィール情報を保存しておく
+            update_user_state(user_id, {
+                'status': 'awaiting_plan',
+                'gender': data.get('gender'),
+                'training_history': data.get('training_history'),
+                'training_location': data.get('training_location'),
+                'gym_frequency': data.get('gym_frequency'),
+            })
             send_line_push(user_id, answer, quick_reply=plan_labels if plan_labels else None)
             main_menu_id = os.environ.get('MAIN_RICH_MENU_ID')
             if main_menu_id:
