@@ -19,61 +19,70 @@ SHEET_API_URL = os.environ.get('SHEET_API_URL')
 DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages'
 
 # メモリ上のキャッシュ（サーバー起動中はここを優先的に使う）
-conversation_ids = {}
+# user_id → {"conversation_id": "...", "status": "...", "plan_type": ...} のようなJSON
+user_states = {}
 cache_loaded = False
 cache_lock = threading.Lock()
 
-def load_conversation_cache():
-    """起動時にスプレッドシートから会話IDを読み込む"""
-    global conversation_ids, cache_loaded
+def load_state_cache():
+    """起動時にスプレッドシートから状態を読み込む"""
+    global user_states, cache_loaded
     try:
         res = requests.get(SHEET_API_URL, timeout=15)
         if res.status_code == 200:
             data = res.json()
             with cache_lock:
-                conversation_ids.update(data)
-            print(f'会話キャッシュ読み込み完了: {len(data)}件')
+                user_states.update(data)
+            print(f'状態キャッシュ読み込み完了: {len(data)}件')
         else:
-            print(f'会話キャッシュ読み込み失敗: {res.status_code}')
+            print(f'状態キャッシュ読み込み失敗: {res.status_code}')
     except Exception as e:
-        print(f'会話キャッシュ読み込みエラー: {e}')
+        print(f'状態キャッシュ読み込みエラー: {e}')
     cache_loaded = True
 
-def save_conversation_id(user_id, conversation_id):
-    """スプレッドシートに会話IDを保存する（非同期）"""
+def save_user_state(user_id, updates):
+    """変更したいキーだけをApps Scriptに送る（非同期）。
+    Apps Script側で既存データとマージしてくれる。"""
     def _save():
         try:
-            res = requests.post(
-                SHEET_API_URL,
-                json={'user_id': user_id, 'conversation_id': conversation_id},
-                timeout=15
-            )
-            print(f'会話ID保存: {res.status_code}')
+            payload = {'user_id': user_id}
+            payload.update(updates)
+            res = requests.post(SHEET_API_URL, json=payload, timeout=15)
+            print(f'状態保存: {res.status_code}')
         except Exception as e:
-            print(f'会話ID保存エラー: {e}')
+            print(f'状態保存エラー: {e}')
     threading.Thread(target=_save).start()
 
-def get_conversation_id(user_id):
+def get_user_state(user_id):
     """メモリにあれば使う。なければスプレッドシートを直接確認する"""
     with cache_lock:
-        if user_id in conversation_ids:
-            return conversation_ids[user_id]
+        if user_id in user_states:
+            return user_states[user_id]
     # メモリにない場合はシートを直接見に行く（再起動直後など）
     try:
         res = requests.get(SHEET_API_URL, timeout=15)
         if res.status_code == 200:
             data = res.json()
             with cache_lock:
-                conversation_ids.update(data)
-            return data.get(user_id, '')
+                user_states.update(data)
+            return data.get(user_id, {})
     except Exception as e:
-        print(f'個別会話ID取得エラー: {e}')
-    return ''
+        print(f'個別状態取得エラー: {e}')
+    return {}
+
+def update_user_state(user_id, updates):
+    """メモリとシートの両方を、指定したキーだけ更新する"""
+    with cache_lock:
+        current = user_states.get(user_id, {})
+        current = {**current, **updates}
+        user_states[user_id] = current
+    save_user_state(user_id, updates)
+
+def get_conversation_id(user_id):
+    return get_user_state(user_id).get('conversation_id', '')
 
 def set_conversation_id(user_id, conversation_id):
-    with cache_lock:
-        conversation_ids[user_id] = conversation_id
-    save_conversation_id(user_id, conversation_id)
+    update_user_state(user_id, {'conversation_id': conversation_id})
 
 def verify_signature(body, signature):
     hash = hmac.new(
@@ -820,7 +829,7 @@ def health():
     return 'OK'
 
 # サーバー起動時に一度だけキャッシュを読み込む
-load_conversation_cache()
+load_state_cache()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
