@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CLEW 食事記録</title>
 
 <style>
@@ -140,7 +142,10 @@
     width: 100%;
     max-width: 420px;
     margin: 0 auto;
-    min-height: 100dvh;
+    /* モバイルでも固定高のコンテナにする。FAB・シート・解析画面は絶対配置なので、
+       body スクロールにすると画面外へ流れてしまう。スクロールは .scroll だけが担う。 */
+    height: 100vh;
+    height: 100dvh;
     background: var(--bg);
     /* シート/解析画面は translateY で画面外へ退避する。hidden だとフォーカス移動で
        このコンテナ自体がプログラム的にスクロールしてしまうため clip で固定する。 */
@@ -225,9 +230,6 @@
     gap: 14px;
   }
 
-  @media (max-width: 479px) {
-    .scroll { height: auto; min-height: calc(100dvh - 66px); }
-  }
 
   .card {
     background: var(--card);
@@ -1163,6 +1165,9 @@
       if (typeof liff === "undefined" || !LIFF_ID) return false;
       try {
         await liff.init({ liffId: LIFF_ID });
+        // LINE の外（普通のブラウザ）ではログインへ飛ばさずデモのままにする。
+        // 飛ばすと動作確認もプレビューもできなくなるため。
+        if (!liff.isInClient() && !liff.isLoggedIn()) return false;
         if (!liff.isLoggedIn()) { liff.login(); return false; }
         idToken = liff.getIDToken();
         return !!idToken;
