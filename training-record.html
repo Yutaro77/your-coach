@@ -627,12 +627,28 @@
       ]
     };
 
-    // 前回の実績（progression_state に相当。実際はサーバから受け取る）
-    var progression = {
-      "ベンチプレス": { weight: 45, lastReps: 10, lastRir: 2 },
-      "インクラインプレス": { weight: 30, lastReps: 10, lastRir: 1 },
-      "チェストフライ": { weight: 15, lastReps: 12, lastRir: 3 }
-    };
+    // 前回の実績（progression_state に相当。実際はサーバから受け取る）。
+    // 履歴が無い種目は「初回」として扱い、ありもしない前回を作らない。
+    var DEFAULT_START_KG = 20;
+    var progression = {};
+
+    /** 履歴が無ければ初回扱いの既定値を返す（前回の実績を捏造しない）。 */
+    function progOf(name) {
+      return progression[name] || { weight: DEFAULT_START_KG, lastReps: null, lastRir: null };
+    }
+
+    /**
+     * デモ用のダミー履歴。**オフラインだと確定したときにだけ**呼ぶ。
+     * これを起動時に入れておくと、新規ユーザーに「前回45kg」という
+     * 実在しない実績を見せ、しかも次回重量の計算までそこから始まってしまう。
+     */
+    function seedDemo() {
+      progression = {
+        "ベンチプレス": { weight: 45, lastReps: 10, lastRir: 2 },
+        "インクラインプレス": { weight: 30, lastReps: 10, lastRir: 1 },
+        "チェストフライ": { weight: 15, lastReps: 12, lastRir: 3 }
+      };
+    }
 
     var logs = []; // { exercise, setNo, weight, reps, rir }
 
@@ -721,8 +737,12 @@
       var wrap = $("ex-list");
       wrap.innerHTML = "";
       PLAN.exercises.forEach(function (e, i) {
-        var p = progression[e.name];
+        var p = progOf(e.name);
         var done = setsOf(e.name).length >= e.sets;
+        // 履歴が無い種目は「前回」を作らず、初回であることをそのまま出す
+        var right = p.lastReps == null
+          ? '<span class="ex-prev">初回</span>'
+          : '<span class="ex-prev num">前回<br>' + fmtKg(p.weight) + "kg × " + p.lastReps + "</span>";
         var row = document.createElement("div");
         row.className = "card ex-row" + (done ? " done" : "");
         row.innerHTML =
@@ -730,8 +750,7 @@
           '<span class="ex-body">' +
             '<span class="ex-name">' + e.name + "</span>" +
             '<span class="ex-meta num">' + e.sets + "セット × " + e.targetReps + "回</span>" +
-          "</span>" +
-          '<span class="ex-prev num">前回<br>' + fmtKg(p.weight) + "kg × " + p.lastReps + "</span>";
+          "</span>" + right;
         wrap.appendChild(row);
       });
     }
@@ -754,7 +773,7 @@
 
     function loadCurrent() {
       var e = curEx();
-      var p = progression[e.name];
+      var p = progOf(e.name);
       var mine = setsOf(e.name);
 
       // 開始重量＝前回の推奨。2セット目以降は直前セットの判定結果を引き継ぐ
@@ -767,8 +786,9 @@
       $("cur-next").textContent = nx ? "次: " + nx.name : "これが最後の種目";
       $("ex-progress").textContent = (exIdx + 1) + "/" + PLAN.exercises.length;
 
-      $("prev-ref").innerHTML = "前回 <b>" + fmtKg(p.weight) + "kg × " + p.lastReps +
-        "回</b>（あと" + p.lastRir + "回）";
+      $("prev-ref").innerHTML = p.lastReps == null
+        ? "この種目は初回。<b>重さを決めて</b>始めよう"
+        : "前回 <b>" + fmtKg(p.weight) + "kg × " + p.lastReps + "回</b>（あと" + p.lastRir + "回）";
 
       paint();
       renderDoneSets();
@@ -924,7 +944,7 @@
       PLAN.exercises.forEach(function (e) {
         var mine = setsOf(e.name);
         if (!mine.length) return;
-        var cur = progression[e.name].weight;
+        var cur = progOf(e.name).weight;
         var next = nextSessionWeight(mine, e.targetReps, e.step);
         var best = mine.reduce(function (m, s) {
           return Math.max(m, estimate1RM(s.weight, s.reps, s.rir));
@@ -1020,26 +1040,39 @@
     // Boot
     // ------------------------------------------------------------
     (async function boot() {
+      // 起動時は履歴なし（全種目「初回」）。読み込みが終わるまで、
+      // 実在しない「前回の重量」を一瞬でも見せないため。
+      $("home-hint").textContent = "読み込み中…";
       renderHome();
 
       online = await connect();
+
       if (!online) {
-        $("home-hint").textContent = "デモデータを表示しています。";
+        seedDemo();
+        renderHome();
+        $("home-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
         return;
       }
+
       try {
         var data = await api("/liff/today", { method: "GET" });
-        // 保存済みの次回開始重量があれば、それを今日の開始重量として使う
+        // サーバの履歴だけを使う。返ってこなかった種目は「初回」のまま
+        // （デモ値が残ると、ありもしない前回から重量計算が始まってしまう）
+        progression = {};
         (data.training.progression || []).forEach(function (p) {
           progression[p.exercise] = {
             weight: Number(p.weight_kg),
-            lastReps: p.last_reps ?? 0,
-            lastRir: p.last_rir ?? 0
+            lastReps: p.last_reps ?? null,
+            lastRir: p.last_rir ?? null
           };
         });
         renderHome();
+        $("home-hint").innerHTML =
+          "セットごとに重量と回数を記録します。<br>次の重量は記録から自動で決まります。";
       } catch (_) {
-        toast("読み込めなかった。通信を確認してね");
+        // 失敗してもデモには戻さない
+        $("home-hint").textContent = "記録を読み込めませんでした。通信を確認して開き直してね。";
+        toast("読み込めなかった");
       }
     })();
   })();
