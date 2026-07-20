@@ -1192,18 +1192,28 @@
     for (var i = 1; i <= MEALS_PER_DAY; i++) SLOTS.push(i + "食目");
 
     var log = {};
-    SLOTS.forEach(function (s) { log[s] = { status: "unrecorded", entries: [] }; });
+    function resetLog() {
+      log = {};
+      SLOTS.forEach(function (s) { log[s] = { status: "unrecorded", entries: [] }; });
+    }
+    resetLog();
 
-    // 初期データ（1〜3食目は記録済み、4食目は未記録のまま）
-    [
-      ["1食目", { time: "7:20", items: "オイコス・バナナ・プロテイン", kcal: 420, p: 32, c: 41, f: 3, emoji: "🥛", tint: ["#FFE7C2", "#FFC97A"] }],
-      ["2食目", { time: "12:40", items: "サーモン定食", kcal: 830, p: 41, c: 114, f: 22, emoji: "🍱", tint: ["#FFD9CF", "#FF9E80"] }],
-      ["3食目", { time: "16:05", items: "プロテイン", kcal: 120, p: 24, c: 3, f: 1, emoji: "🥤", tint: ["#D9E7FF", "#8FB4FF"] }]
-    ].forEach(function (pair) {
-      if (!log[pair[0]]) return;
-      log[pair[0]].status = "recorded";
-      log[pair[0]].entries.push(pair[1]);
-    });
+    /**
+     * デモ用のダミー記録。**オフラインだと確定したときにだけ**呼ぶ。
+     * 記録アプリで、記録していないものを一瞬でも実データとして見せてはいけない。
+     */
+    function seedDemo() {
+      resetLog();
+      [
+        ["1食目", { time: "7:20", items: "オイコス・バナナ・プロテイン", kcal: 420, p: 32, c: 41, f: 3, emoji: "🥛", tint: ["#FFE7C2", "#FFC97A"] }],
+        ["2食目", { time: "12:40", items: "サーモン定食", kcal: 830, p: 41, c: 114, f: 22, emoji: "🍱", tint: ["#FFD9CF", "#FF9E80"] }],
+        ["3食目", { time: "16:05", items: "プロテイン", kcal: 120, p: 24, c: 3, f: 1, emoji: "🥤", tint: ["#D9E7FF", "#8FB4FF"] }]
+      ].forEach(function (pair) {
+        if (!log[pair[0]]) return;
+        log[pair[0]].status = "recorded";
+        log[pair[0]].entries.push(pair[1]);
+      });
+    }
 
     var LIBRARY = {
       photo: { name: "鶏むね肉のサラダボウル", grams: 320, kcal: 480, p: 45, c: 38, f: 14, emoji: "🥗", tint: ["#DFF3DC", "#93D18C"] },
@@ -1765,22 +1775,33 @@
     // Boot
     // ------------------------------------------------------------
     (async function boot() {
+      // 起動時は空（全枠が未記録）で描く。読み込みが終わるまで、
+      // 記録していないものを一瞬でも表示しないため。
+      $("home-hint").textContent = "読み込み中…";
       renderTimeline(null);
       renderSummary(true);
 
       online = await connect();
+
       if (!online) {
-        // デモであることを隠さない
-        $("home-hint") && ($("home-hint").textContent = "デモデータを表示しています。");
+        // LINE の外で開いた場合だけ、デモだと明示したうえでダミーを見せる
+        seedDemo();
+        renderTimeline(null);
+        renderSummary(false);
+        $("home-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
         return;
       }
+
       try {
         var data = await api("/liff/today", { method: "GET" });
         adoptServerDay(data);
         renderTimeline(null);
         renderSummary(false);
+        $("home-hint").innerHTML = "写真を撮るだけで記録できます。<br>重さと栄養はAIが推定します。";
       } catch (_) {
-        toast("読み込めなかった。通信を確認してね");
+        // 失敗してもデモには戻さない。空のまま「読めなかった」と正直に出す。
+        $("home-hint").textContent = "記録を読み込めませんでした。通信を確認して開き直してね。";
+        toast("読み込めなかった");
       }
     })();
   })();
