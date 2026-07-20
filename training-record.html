@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CLEW トレーニング記録</title>
 
 <style>
@@ -127,7 +129,10 @@
     width: 100%;
     max-width: 420px;
     margin: 0 auto;
-    min-height: 100dvh;
+    /* モバイルでも固定高のコンテナにする。開始ボタン・シート・各画面は絶対配置なので、
+       body スクロールにすると画面外へ流れてしまう。スクロールは .scroll だけが担う。 */
+    height: 100vh;
+    height: 100dvh;
     background: var(--bg);
     overflow: hidden;
     overflow: clip;
@@ -182,7 +187,6 @@
     flex-direction: column;
     gap: 12px;
   }
-  @media (max-width: 479px) { .scroll { height: auto; min-height: calc(100dvh - 66px); } }
 
   .card { background: var(--card); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
 
@@ -596,6 +600,9 @@
       if (typeof liff === "undefined" || !LIFF_ID) return false;
       try {
         await liff.init({ liffId: LIFF_ID });
+        // LINE の外（普通のブラウザ）ではログインへ飛ばさずデモのままにする。
+        // 飛ばすと動作確認もプレビューもできなくなるため。
+        if (!liff.isInClient() && !liff.isLoggedIn()) return false;
         if (!liff.isLoggedIn()) { liff.login(); return false; }
         idToken = liff.getIDToken();
         return !!idToken;
