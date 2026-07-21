@@ -1410,8 +1410,10 @@
     /** 枠の合計（1枠に複数記録できるため）。 */
     function slotTotals(s) {
       return log[s].entries.reduce(function (a, e) {
-        a.kcal += e.kcal; a.p += e.p; a.c += e.c; a.f += e.f; return a;
-      }, { kcal: 0, p: 0, c: 0, f: 0 });
+        a.kcal += e.kcal; a.p += e.p; a.c += e.c; a.f += e.f;
+        a.grams += e.grams || 0;
+        return a;
+      }, { kcal: 0, p: 0, c: 0, f: 0, grams: 0 });
     }
 
     function countByStatus(st) {
@@ -1670,6 +1672,8 @@
         p: Math.round(entry.p),
         c: Math.round(entry.c),
         f: Math.round(entry.f),
+        // 重さも残す。これが無いと「200gだった」の訂正（LINE側T8）が効かない
+        grams: Math.round(entry.grams || 0),
         emoji: entry.emoji,
         tint: entry.tint
       };
@@ -1683,6 +1687,7 @@
         status: "recorded",
         items: log[s].entries.map(function (e) { return e.items; }).join("・"),
         kcal: t.kcal, p: t.p, c: t.c, f: t.f,
+        grams: t.grams,
         source: "liff"
       });
 
@@ -1970,6 +1975,7 @@
           commit({
             name: base.name,
             kcal: v.kcal, p: v.p, c: v.c, f: v.f,
+            grams: per ? grams : 0,
             emoji: base.emoji,
             tint: base.tint
           }, chosenSlot);
