@@ -1400,6 +1400,8 @@
     // ------------------------------------------------------------
     // Model
     // ------------------------------------------------------------
+    // オフライン（LINE外プレビュー）用の初期値。online なら /liff/today の
+    // targets.macros で全て上書きされる。ここの数字を本物として画面に出さない。
     var GOAL = { kcal: 2300, p: 150, c: 260, f: 65 };
     /** 週の再配分で目標が動いたときの説明（サーバが文にしたものをそのまま出す）。 */
     var ADJUST_NOTE = "";
@@ -2415,6 +2417,13 @@
         // 画面とAIで違う数字を出さないよう、計算は必ずサーバ側の値をそのまま使う。
         GOAL.kcal = t.kcalToday || t.kcalTraining || t.kcalRest;
         if (t.proteinG) GOAL.p = t.proteinG;
+        // C/F はサーバが kcal と P から出した値。ここで計算し直さない。
+        // （以前はデモ用の定数 c:260/f:65 が出たままで、どの計画とも無関係だった）
+        if (t.macros) {
+          GOAL.p = t.macros.proteinG;
+          GOAL.c = t.macros.carbG;
+          GOAL.f = t.macros.fatG;
+        }
         ADJUST_NOTE = (t.adjustKcal ? t.adjustNote : "") || "";
       }
     }
