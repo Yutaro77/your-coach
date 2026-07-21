@@ -376,6 +376,67 @@
     text-wrap: balance;
   }
   .ai-text b { color: var(--blue); font-weight: 700; }
+  /* ---------------- 素材を積み上げる手入力 ---------------- */
+  .fd-search {
+    width: 100%; padding: 12px 14px; margin-bottom: 10px;
+    border: 0; border-radius: 12px; background: var(--fill);
+    color: var(--label); font: inherit; font-size: 16px;
+  }
+  .fd-search:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+  .fd-list { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+  .fd-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 11px 13px; border-radius: 12px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    text-align: left;
+  }
+  .fd-row:active { background: var(--fill); }
+  .fd-name { flex: 1; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .fd-kcal { flex: none; font-size: 11px; color: var(--label-2); }
+
+  /* 選んだ素材の量を決める段 */
+  .fd-qty { padding: 12px 13px; border-radius: 12px; background: var(--fill); margin-top: 8px; }
+  .fd-qty-name { font-size: 15px; font-weight: 700; }
+  .fd-units { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .fd-unit {
+    padding: 7px 12px; border-radius: 16px; font-size: 13px; font-weight: 600;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator); color: var(--label-2);
+  }
+  .fd-unit.on { background: var(--blue); color: #fff; box-shadow: none; }
+  .fd-g { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .fd-g input {
+    flex: 1; min-width: 0; padding: 10px 12px; border: 0; border-radius: 10px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font: inherit; font-size: 17px; font-weight: 700; color: var(--label); text-align: right;
+  }
+  .fd-g span { font-size: 14px; color: var(--label-2); font-weight: 600; }
+  .fd-add {
+    width: 100%; margin-top: 10px; padding: 12px; border-radius: 11px;
+    background: var(--blue); color: #fff; font-size: 15px; font-weight: 700;
+  }
+  .fd-est { margin-top: 8px; font-size: 12px; color: var(--label-2); text-align: center; }
+
+  .fd-picked { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .fd-item { display: flex; align-items: center; gap: 10px; padding: 10px 13px; }
+  .fd-item-n { flex: 1; font-size: 14px; font-weight: 600; }
+  .fd-item-g { font-size: 12px; color: var(--label-2); }
+  .fd-item-k { font-size: 13px; font-weight: 700; width: 58px; text-align: right; }
+  .fd-del { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--fill);
+            color: var(--label-2); font-size: 15px; line-height: 1; }
+
+  /* 提案は「未記録」と同じ薄さ。記録済みの数値と見間違えないようにする */
+  .suggest {
+    display: block;
+    margin-top: 2px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--label-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .ai-note {
     display: block;
     margin-top: 6px;
@@ -856,7 +917,7 @@
   }
   .slot-chip.on { background: var(--blue); color: #fff; }
 
-  /* list rows for 履歴 / お気に入り */
+  /* list rows for 履歴 / よく食べるもの */
   .rows { display: flex; flex-direction: column; gap: 8px; }
   .row {
     display: flex;
@@ -1144,6 +1205,8 @@
   <div class="scrim" id="scrim"></div>
 
   <div class="sheet" id="sheet" role="dialog" aria-label="記録方法を選ぶ">
+    <div class="sheet-group" id="suggest-group" hidden></div>
+
     <div class="sheet-group">
       <div class="sheet-hd" id="sheet-hd">記録する</div>
       <button class="opt primary" data-act="photo">
@@ -1187,7 +1250,7 @@
                   stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" />
           </svg>
         </span>
-        <span class="opt-t">お気に入り</span>
+        <span class="opt-t">よく食べるもの</span>
       </button>
       <button class="opt" data-act="manual">
         <span class="opt-ic">
@@ -1253,7 +1316,7 @@
           <i style="background:color-mix(in srgb, var(--green) 52%, transparent)"></i>
           <i style="background:color-mix(in srgb, var(--green) 78%, transparent)"></i>
           <i style="background:var(--green)"></i>
-          <span>全部</span>
+          <span>多い</span>
         </div>
       </section>
 
@@ -1346,7 +1409,8 @@
     //   recorded   … 記録あり
     //   unrecorded … 未記録（沈黙）。「食べなかった」とは絶対に解釈しない
     //   skipped    … 本人が「食べていない」と明示的に申告した
-    var MEALS_PER_DAY = 4;
+    // サーバの DEFAULT_MEALS_PER_DAY と揃える（読み込み前の初期表示にだけ使う）
+    var MEALS_PER_DAY = 6;
 
     var SLOTS = [];
     for (var i = 1; i <= MEALS_PER_DAY; i++) SLOTS.push(i + "食目");
@@ -1383,7 +1447,7 @@
       barcode: { name: "ザバス ミルクプロテイン", grams: 430, kcal: 103, p: 15, c: 10, f: 0, emoji: "🥛", tint: ["#E3EAFF", "#9DB2FF"] }
     };
 
-    // 履歴・お気に入りは自分の記録から作る（recentItems/favItems）。
+    // 履歴・よく食べるものは自分の記録から作る（recentItems/favItems）。
     // ここに固定データを置くと、タップした瞬間に食べていないものが記録に入る。
 
     // ------------------------------------------------------------
@@ -1555,15 +1619,36 @@
     }
 
     /** 未記録（沈黙）。空欄として残し続けるのが目的。責める言葉は使わない。 */
+    // ------------------------------------------------------------
+    // 空き枠への提案（サーバが今日の残りから作る）
+    //   表示は未記録と同じ薄さ。タップ→保存で記録になるが、
+    //   保存を押すまでは記録ではない（勝手に入らない）。
+    // ------------------------------------------------------------
+    var SUGGEST = {};   // 枠名 → { text, kcal, p, c, f }
+
+    async function loadSuggestions() {
+      if (!online) return;
+      try {
+        var data = await api("/liff/suggestions", { method: "GET" });
+        SUGGEST = {};
+        (data.slots || []).forEach(function (x) { SUGGEST[x.slot + "食目"] = x; });
+        renderTimeline(null);
+      } catch (_) { /* 提案が出ないだけ。記録には影響しない */ }
+    }
+
     function ghostNode(s) {
       var b = document.createElement("button");
       b.className = "meal ghost";
       b.dataset.slot = s;
+      var sg = SUGGEST[s];
       b.innerHTML =
         '<span class="ghost-thumb">' + GHOST_ICON + "</span>" +
         '<span class="meal-body">' +
           '<span class="meal-slot">' + s + "</span>" +
+          // 未記録であることは残したまま、提案を同じ薄さで添える
           '<span class="meal-items">未記録</span>' +
+          // 提案は2段目。1行に混ぜると省略されて読めない
+          (sg ? '<span class="suggest">' + esc(sg.text) + "</span>" : "") +
         "</span>" +
         '<span class="ghost-cta">記録する</span>';
       return b;
@@ -1597,7 +1682,8 @@
       // 「何件記録したか」と「いくつ空いているか」を両方見せる（沈黙を数える）
       var rec = countByStatus("recorded");
       var unrec = countByStatus("unrecorded");
-      $("meal-count").innerHTML = rec + " / " + MEALS_PER_DAY + "食" +
+      // 枠数は「上限」であって目標ではないので分母は出さない（6食食べる目標に読める）
+      $("meal-count").innerHTML = "記録" + rec + "件" +
         (unrec ? ' <span class="unrec">· 未記録' + unrec + "</span>" : "");
     }
 
@@ -1620,10 +1706,29 @@
     // どの枠に記録しようとしているか。枠から開いたときだけ「食べていない」を出す。
     var pendingSlot = null;
 
+    /** 枠から開いたときだけ、その枠の提案を先頭に出す。 */
+    function renderSuggestOption(slot) {
+      var wrap = $("suggest-group");
+      var sg = slot ? SUGGEST[slot] : null;
+      if (!sg) { wrap.hidden = true; wrap.innerHTML = ""; return; }
+      wrap.hidden = false;
+      wrap.innerHTML =
+        '<button class="opt primary" data-act="suggest">' +
+          '<span class="opt-ic">' +
+            '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+              '<path d="M12 3.5l2.2 4.6 5 .7-3.6 3.5.85 5-4.45-2.35L7.55 17.3l.85-5L4.8 8.8l5-.7L12 3.5z" ' +
+              'stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>' +
+          "</span>" +
+          '<span class="opt-t">' + esc(sg.text) + "</span>" +
+          '<span class="opt-hint">提案</span>' +
+        "</button>";
+    }
+
     function setSheet(on, slot) {
       sheetOpen = on;
       if (on) {
         pendingSlot = slot || null;
+        renderSuggestOption(pendingSlot);
         $("sheet-hd").textContent = pendingSlot ? pendingSlot + "を記録する" : "記録する";
         $("skip-group").hidden = !pendingSlot;
       }
@@ -1674,6 +1779,8 @@
         f: Math.round(entry.f),
         // 重さも残す。これが無いと「200gだった」の訂正（LINE側T8）が効かない
         grams: Math.round(entry.grams || 0),
+        // 素材の内訳（あれば）。後から1素材だけ直せるようにするため
+        parts: entry.parts || null,
         emoji: entry.emoji,
         tint: entry.tint
       };
@@ -1682,12 +1789,19 @@
 
       // 1枠に複数記録がある場合はサーバ側も合算で持つ（1枠=1行）
       var t = slotTotals(s);
+      // 内訳は「枠の全部の記録が素材由来のとき」だけ送る。写真と混ざったら合計が
+      // 内訳と合わなくなるので、その場合は内訳なし（合計だけ）にする。
+      var allParts = log[s].entries.every(function (e) { return e.parts && e.parts.length; });
+      var parts = allParts
+        ? log[s].entries.reduce(function (a, e) { return a.concat(e.parts); }, [])
+        : null;
       push({
         slot: slotNo(s),
         status: "recorded",
         items: log[s].entries.map(function (e) { return e.items; }).join("・"),
         kcal: t.kcal, p: t.p, c: t.c, f: t.f,
         grams: t.grams,
+        parts: parts,
         source: "liff"
       });
 
@@ -1733,7 +1847,7 @@
       return Number(a[1]) + "/" + Number(a[2]);
     }
 
-    /** 記録済みの枠を新しい順に並べる（履歴・お気に入りの共通の元データ）。 */
+    /** 記録済みの枠を新しい順に並べる（履歴・よく食べるものの共通の元データ）。 */
     function recordedEntries() {
       if (!HIST || !HIST.days) return [];
       var out = [];
@@ -1743,6 +1857,7 @@
           out.push({
             name: sl.items, date: d.date,
             kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f, grams: sl.grams || 0,
+            parts: sl.parts || null,
             emoji: "🍽️", tint: tintOf(sl.items)
           });
         });
@@ -1972,10 +2087,19 @@
 
         $("save").addEventListener("click", function () {
           var v = values();
+          // 素材の内訳があれば、量を変えた分だけ内訳も比例させて引き継ぐ。
+          // 内訳を落とすと、あとから1素材だけ直せなくなる。
+          var ratio = per && base.grams ? grams / base.grams : 1;
+          var parts = base.parts && base.parts.length
+            ? base.parts.map(function (x) {
+              return { code: x.code, grams: Math.max(1, Math.round(x.grams * ratio)) };
+            })
+            : null;
           commit({
             name: base.name,
             kcal: v.kcal, p: v.p, c: v.c, f: v.f,
             grams: per ? grams : 0,
+            parts: parts,
             emoji: base.emoji,
             tint: base.tint
           }, chosenSlot);
@@ -1983,7 +2107,7 @@
       }, opts.delay != null ? opts.delay : 780);
     }
 
-    // --- List screens (履歴 / お気に入り) ---
+    // --- List screens (履歴 / よく食べるもの) ---
     function runList(title, data, note) {
       openScreen(title);
       $("screen-body").innerHTML =
@@ -2002,46 +2126,208 @@
       $("screen-body").querySelector(".rows").addEventListener("click", function (e) {
         var btn = e.target.closest("[data-i]");
         if (!btn) return;
-        commit(data[Number(btn.dataset.i)]);
+        // 即記録にしない。前回と同じ量とは限らないし、押し間違いも起きる
+        runAnalysis(data[Number(btn.dataset.i)], {
+          title: "内容を確認",
+          delay: 0,
+          note: "量が違うときは変えてね。保存すると記録されます。"
+        });
       });
     }
 
     // --- Manual: still no name typing. Pick a size, done. ---
-    function runManual() {
-      openScreen("手入力");
-      var kcal = 500, p = 30, c = 55, f = 15;
-      $("screen-body").innerHTML =
-        '<div class="card stepper">' +
-          '<span class="step-l"><b>カロリー</b><span>おおよそで大丈夫です</span></span>' +
-          '<span class="step-ctl">' +
-            '<button class="step-btn" id="m-minus" aria-label="減らす">−</button>' +
-            '<span class="step-val num" id="m-kcal">500 kcal</span>' +
-            '<button class="step-btn" id="m-plus" aria-label="増やす">＋</button>' +
-          "</span>" +
-        "</div>" +
-        '<div class="macro-grid">' +
-          '<div class="mg-cell"><span class="mg-k">KCAL</span><span class="mg-v num" id="mv-kcal">500</span></div>' +
-          '<div class="mg-cell"><span class="mg-k" style="color:var(--blue)">P</span><span class="mg-v num" id="mv-p">30</span></div>' +
-          '<div class="mg-cell"><span class="mg-k" style="color:var(--orange)">C</span><span class="mg-v num" id="mv-c">55</span></div>' +
-          '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="mv-f">15</span></div>' +
-        "</div>" +
-        '<button class="save" id="m-save">保存</button>' +
-        '<p class="hint">料理名の入力は不要です。<br>PFCは一般的な食事の比率から推定します。</p>';
+    // ------------------------------------------------------------
+    // 手入力＝素材の積み上げ（MyFitnessPal 式）
+    //   端末は「食品番号と重量」だけを送り、栄養値はサーバが成分表から計算する。
+    //   画面に出る数値も同じ計算式（nutritionOf）なので、保存前後で数字が変わらない。
+    // ------------------------------------------------------------
+    var FOOD_DEMO = [
+      { code: "11220", label: "鶏むね", kcal: 105, p: 23.3, c: 0.1, f: 1.9, refusePct: 0, units: [] },
+      { code: "01088", label: "ごはん", kcal: 156, p: 2.5, c: 37.1, f: 0.3, refusePct: 0,
+        units: [{ label: "茶碗1杯", grams: 150 }, { label: "大盛1杯", grams: 250 }] },
+      { code: "12004", label: "卵", kcal: 142, p: 12.2, c: 0.4, f: 10.2, refusePct: 14,
+        units: [{ label: "1個(M)", grams: 60 }, { label: "1個(L)", grams: 70 }] }
+    ];
 
-      function paint() {
-        var k = kcal / 500;
-        p = Math.round(30 * k); c = Math.round(55 * k); f = Math.round(15 * k);
-        $("m-kcal").textContent = kcal + " kcal";
-        $("mv-kcal").textContent = kcal;
-        $("mv-p").textContent = p; $("mv-c").textContent = c; $("mv-f").textContent = f;
-        $("m-minus").disabled = kcal <= 50;
+    /** 総重量→可食部で栄養を出す。サーバの nutritionOf と同じ式にすること。 */
+    function foodNutrition(food, grams) {
+      var r = grams * (1 - (food.refusePct || 0) / 100) / 100;
+      return {
+        kcal: Math.round(food.kcal * r),
+        p: Math.round(food.p * r * 10) / 10,
+        c: Math.round(food.c * r * 10) / 10,
+        f: Math.round(food.f * r * 10) / 10
+      };
+    }
+
+    function runBuilder(preset) {
+      openScreen("素材から記録");
+      var picked = (preset || []).map(function (x) { return { code: x.code, name: x.name, grams: x.grams }; });
+      var results = [];
+      var sel = null;      // 量を入力中の食品
+      var selGrams = 100;
+      var searchTimer = null;
+
+      $("screen-body").innerHTML =
+        '<input class="fd-search" id="fd-q" placeholder="食材で検索（例：鶏むね、ごはん）" autocomplete="off">' +
+        '<div class="fd-list" id="fd-list"></div>' +
+        '<div id="fd-qty"></div>' +
+        '<div class="sec-head" style="padding-top:14px"><h2 class="sec-title" style="font-size:17px">追加した素材</h2>' +
+          '<span class="sec-meta" id="fd-count"></span></div>' +
+        '<div class="fd-picked" id="fd-picked"></div>' +
+        '<div class="macro-grid" style="margin-top:10px">' +
+          '<div class="mg-cell"><span class="mg-k">KCAL</span><span class="mg-v num" id="b-kcal">0</span></div>' +
+          '<div class="mg-cell"><span class="mg-k" style="color:var(--blue)">P</span><span class="mg-v num" id="b-p">0</span></div>' +
+          '<div class="mg-cell"><span class="mg-k" style="color:var(--orange)">C</span><span class="mg-v num" id="b-c">0</span></div>' +
+          '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="b-f">0</span></div>' +
+        "</div>" +
+        '<button class="save" id="b-save">保存</button>' +
+        '<p class="hint">栄養価は日本食品標準成分表（八訂）から計算しています。</p>';
+
+      var byCode = {};   // 追加済みの計算に使う食品データ
+
+      function totals() {
+        return picked.reduce(function (a, x) {
+          var f = byCode[x.code];
+          if (!f) return a;
+          var n = foodNutrition(f, x.grams);
+          a.kcal += n.kcal; a.p += n.p; a.c += n.c; a.f += n.f;
+          return a;
+        }, { kcal: 0, p: 0, c: 0, f: 0 });
       }
-      $("m-minus").addEventListener("click", function () { kcal = Math.max(50, kcal - 50); paint(); });
-      $("m-plus").addEventListener("click", function () { kcal = Math.min(3000, kcal + 50); paint(); });
-      $("m-save").addEventListener("click", function () {
-        commit({ name: "食事", kcal: kcal, p: p, c: c, f: f, emoji: "🍽️", tint: ["#ECECEF", "#C7C7CC"] });
+
+      function renderPicked() {
+        var wrap = $("fd-picked");
+        wrap.innerHTML = "";
+        picked.forEach(function (x, i) {
+          var f = byCode[x.code];
+          var n = f ? foodNutrition(f, x.grams) : { kcal: 0 };
+          var row = document.createElement("div");
+          row.className = "card fd-item";
+          row.innerHTML =
+            '<span class="fd-item-n">' + esc(x.name) + '<span class="fd-item-g"> ' + x.grams + "g</span></span>" +
+            '<span class="fd-item-k num">' + n.kcal + "</span>" +
+            '<button class="fd-del" aria-label="外す">×</button>';
+          row.querySelector(".fd-del").addEventListener("click", function () {
+            picked.splice(i, 1); renderPicked();
+          });
+          wrap.appendChild(row);
+        });
+        if (!picked.length) {
+          wrap.innerHTML = '<p class="hint" style="text-align:left">まだ何も追加していません。</p>';
+        }
+        var t = totals();
+        $("fd-count").textContent = picked.length ? picked.length + "件" : "";
+        $("b-kcal").textContent = Math.round(t.kcal);
+        $("b-p").textContent = Math.round(t.p);
+        $("b-c").textContent = Math.round(t.c);
+        $("b-f").textContent = Math.round(t.f);
+      }
+
+      function renderQty() {
+        var wrap = $("fd-qty");
+        if (!sel) { wrap.innerHTML = ""; return; }
+        var n = foodNutrition(sel, selGrams);
+        wrap.innerHTML =
+          '<div class="fd-qty">' +
+            '<div class="fd-qty-name">' + esc(sel.label) + "</div>" +
+            (sel.units && sel.units.length
+              ? '<div class="fd-units">' + sel.units.map(function (u, i) {
+                return '<button class="fd-unit' + (u.grams === selGrams ? " on" : "") +
+                  '" data-u="' + i + '">' + esc(u.label) + "</button>";
+              }).join("") + "</div>"
+              : "") +
+            '<div class="fd-g"><input id="fd-grams" type="number" inputmode="numeric" value="' +
+              selGrams + '"><span>g</span></div>' +
+            '<div class="fd-est num">' + n.kcal + "kcal ／ P" + n.p + " C" + n.c + " F" + n.f +
+              (sel.refusePct ? "（可食部 " + Math.round(selGrams * (1 - sel.refusePct / 100)) + "g）" : "") +
+            "</div>" +
+            '<button class="fd-add" id="fd-add">追加する</button>' +
+          "</div>";
+
+        Array.prototype.forEach.call(wrap.querySelectorAll("[data-u]"), function (b) {
+          b.addEventListener("click", function () {
+            selGrams = sel.units[Number(b.dataset.u)].grams;
+            renderQty();
+          });
+        });
+        $("fd-grams").addEventListener("input", function () {
+          selGrams = Math.max(1, Math.min(5000, Number(this.value) || 0));
+          var est = wrap.querySelector(".fd-est");
+          var nn = foodNutrition(sel, selGrams);
+          est.textContent = nn.kcal + "kcal ／ P" + nn.p + " C" + nn.c + " F" + nn.f;
+          Array.prototype.forEach.call(wrap.querySelectorAll("[data-u]"), function (b) {
+            b.classList.toggle("on", sel.units[Number(b.dataset.u)].grams === selGrams);
+          });
+        });
+        $("fd-add").addEventListener("click", function () {
+          byCode[sel.code] = sel;
+          picked.push({ code: sel.code, name: sel.label, grams: selGrams });
+          sel = null; selGrams = 100;
+          $("fd-q").value = "";
+          renderQty(); renderPicked();
+          search("");   // 続けて追加できるよう、よく使う食品を出し直す
+        });
+      }
+
+      function renderList() {
+        var wrap = $("fd-list");
+        wrap.innerHTML = "";
+        if (!results.length) {
+          wrap.innerHTML = '<p class="hint" style="text-align:left">' +
+            (online
+              ? "見つかりませんでした。別の言い方で探してみて（例：とりむね、白米）。"
+              : "デモでは3件だけ検索できます。") + "</p>";
+          return;
+        }
+        results.slice(0, 12).forEach(function (f) {
+          var b = document.createElement("button");
+          b.className = "fd-row";
+          b.innerHTML = '<span class="fd-name">' + esc(f.label) + "</span>" +
+            '<span class="fd-kcal num">' + f.kcal + " kcal/100g</span>";
+          b.addEventListener("click", function () {
+            sel = f;
+            selGrams = (f.units && f.units.length) ? f.units[0].grams : 100;
+            renderQty();
+            $("fd-qty").scrollIntoView({ block: "nearest", behavior: "smooth" });
+          });
+          wrap.appendChild(b);
+        });
+      }
+
+      async function search(q) {
+        if (!online) {
+          results = FOOD_DEMO.filter(function (f) { return !q || f.label.indexOf(q) >= 0; });
+          renderList();
+          return;
+        }
+        try {
+          var data = await api("/liff/foods?q=" + encodeURIComponent(q), { method: "GET" });
+          results = data.items || [];
+        } catch (_) { results = []; }
+        renderList();
+      }
+
+      $("fd-q").addEventListener("input", function () {
+        var q = this.value;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { search(q); }, 220);
       });
-      paint();
+
+      $("b-save").addEventListener("click", function () {
+        if (!picked.length) { toast("素材を追加してね"); return; }
+        var t = totals();
+        commit({
+          name: picked.map(function (x) { return x.name + x.grams + "g"; }).join("・"),
+          kcal: t.kcal, p: t.p, c: t.c, f: t.f,
+          grams: picked.reduce(function (a, x) { return a + x.grams; }, 0),
+          parts: picked.map(function (x) { return { code: x.code, grams: x.grams }; }),
+          emoji: "🍽️", tint: ["#DFF3DC", "#93D18C"]
+        });
+      });
+
+      search("");        // 最初はよく使う食品を出す
+      renderPicked();
     }
 
     // --- Sheet actions ---
@@ -2052,6 +2338,18 @@
       setSheet(false);
 
       setTimeout(function () {
+        // 提案どおり記録する。保存画面を経由するので、押すまでは記録されない
+        if (act === "suggest") {
+          var sg = SUGGEST[pendingSlot];
+          if (sg) {
+            runAnalysis({
+              name: sg.text, grams: 0,
+              kcal: sg.kcal, p: sg.p, c: sg.c, f: sg.f,
+              emoji: "🍽️", tint: ["#DFF3DC", "#93D18C"]
+            }, { title: "提案どおり記録", delay: 0, note: "内容を変えたいときは、写真か手入力で記録してね。" });
+          }
+          return;
+        }
         // オフライン（LINE外プレビュー）だけダミーで動かす。オンラインでは必ず実写真を解析する
         if (act === "photo") {
           if (online) capture("meal");
@@ -2060,11 +2358,11 @@
           if (online) capture("label");
           else runAnalysis(LIBRARY.barcode, { title: "読み取り結果（デモ）" });
         } else if (act === "recent") {
-          runList("最近食べたもの", recentItems(), "タップするとそのまま記録されます。");
+          runList("最近食べたもの", recentItems(), "タップすると量を確認してから記録できます。");
         } else if (act === "fav") {
-          runList("よく食べるもの", favItems(), "記録の多い順に出しています。");
+          runList("よく食べるもの", favItems(), "記録の多い順。タップして量を確認できます。");
         }
-        else if (act === "manual") runManual();
+        else if (act === "manual") runBuilder();
         else if (act === "skip" && pendingSlot) markSkipped(pendingSlot);
       }, 240);
     });
@@ -2195,8 +2493,9 @@
       });
       days.forEach(function (d, i) {
         var p = dateParts(d.date);
-        var ratio = HIST.perDay ? d.recorded / HIST.perDay : 0;
-        var lv = d.recorded === 0 ? 0 : Math.min(4, Math.ceil(ratio * 4));
+        // 記録した「件数」で濃さを決める。枠数（上限）で割ると、
+        // 上限を増やしただけで全員の色が薄くなってしまう。
+        var lv = Math.min(4, d.recorded);
         var box = document.createElement("button");
         box.className = "heat-box" + (lv ? " lv" + lv : "") +
           (d.recorded === 0 && d.skipped > 0 ? " skipped" : "") +
@@ -2317,7 +2616,8 @@
         var date = dt.getFullYear() + "-" +
           String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
         // 3日に1度は記録が抜け、たまに「食べてない」申告がある、くらいの散らばり
-        var rec = i === 4 ? 0 : Math.max(1, per - (i % 3));
+        // 実際の使われ方に近い散らばり（1日2〜4件、たまに記録なし）
+        var rec = i === 4 ? 0 : Math.max(1, 4 - (i % 3));
         var skip = i === 4 ? 1 : (i % 5 === 0 ? 1 : 0);
         var slots = [];
         for (var s = 1; s <= per; s++) {
@@ -2326,7 +2626,7 @@
               slot: s, status: "recorded",
               items: ["鶏むねと白米", "オートミールとプロテイン", "サーモン丼", "卵かけご飯と味噌汁"][(s + i) % 4],
               kcal: 420 + ((i * 37 + s * 53) % 260), p: 28 + (s * 3 + i) % 14,
-              c: 45 + (i * 5 + s) % 30, f: 9 + (i + s) % 8, grams: null
+              c: 45 + (i * 5 + s) % 30, f: 9 + (i + s) % 8, grams: 250 + (i * 13 + s * 7) % 150
             });
           } else {
             slots.push({
@@ -2369,7 +2669,12 @@
       if (!online) {
         // LINE の外で開いた場合だけ、デモだと明示したうえでダミーを見せる
         seedDemo();
-        HIST = demoHistory();        // 候補リスト（履歴・お気に入り）もデモで動かす
+        HIST = demoHistory();        // 候補リスト（履歴・よく食べるもの）もデモで動かす
+        SUGGEST = {                  // 空き枠への提案もデモで見えるようにする
+          "4食目": { text: "鶏むね肉150g＋ご飯150g", kcal: 480, p: 42, c: 56, f: 6 },
+          "5食目": { text: "ゆで卵2個＋バナナ1本", kcal: 260, p: 15, c: 30, f: 10 },
+          "6食目": { text: "プロテイン＋ヨーグルト", kcal: 210, p: 30, c: 12, f: 4 }
+        };
         HIST.today = HIST.days[HIST.days.length - 1].date;
         refreshQuick();
         renderTimeline(null);
@@ -2385,8 +2690,9 @@
         renderSummary(false);
         $("home-hint").innerHTML =
           "写真を撮るだけで記録できます。<br>加工食品は栄養成分表示を撮ると正確だよ。";
-        // 履歴・お気に入り・「前回と同じ」は自分の記録から作るので先に読んでおく
+        // 履歴・よく食べるもの・「前回と同じ」は自分の記録から作るので先に読んでおく
         loadHistory().then(refreshQuick);
+        loadSuggestions();
       } catch (_) {
         // 失敗してもデモには戻さない。空のまま「読めなかった」と正直に出す。
         $("home-hint").textContent = "記録を読み込めませんでした。通信を確認して開き直してね。";
