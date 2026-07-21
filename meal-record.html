@@ -1122,8 +1122,8 @@
         </svg>
       </span>
       <span class="quick-t">
-        <b>昨日と同じ1食目</b>
-        <span>オイコス・バナナ・プロテイン ／ 420 kcal</span>
+        <b id="quick-title">前回と同じものを記録</b>
+        <span id="quick-sub">読み込み中…</span>
       </span>
       <span class="quick-add">追加</span>
     </button>
@@ -1158,14 +1158,18 @@
         <span class="opt-t">写真</span>
         <span class="opt-hint">おすすめ</span>
       </button>
-      <button class="opt" data-act="barcode">
+      <!-- バーコードは日本の食品で商品DBのカバレッジが取れないので採用しない。
+           代わりにパッケージ裏の栄養成分表示そのものを読む（推定でなく実際の数値）。 -->
+      <button class="opt" data-act="label">
         <span class="opt-ic">
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M3 5.5v13M6.6 5.5v13M10.4 5.5v13M14.2 5.5v13M17.6 5.5v13M21 5.5v13"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            <rect x="4" y="3.2" width="16" height="17.6" rx="2.4" stroke="currentColor" stroke-width="1.9" />
+            <path d="M7.6 8h8.8M7.6 12h8.8M7.6 16h5.2" stroke="currentColor" stroke-width="1.7"
+                  stroke-linecap="round" />
           </svg>
         </span>
-        <span class="opt-t">バーコード</span>
+        <span class="opt-t">栄養成分表示</span>
+        <span class="opt-hint">正確</span>
       </button>
       <button class="opt" data-act="recent">
         <span class="opt-ic">
@@ -1273,6 +1277,10 @@
     </div>
   </section>
 
+  <!-- カメラ起動用。capture=environment で背面カメラが開く（LIFF内でも動く） -->
+  <input type="file" id="camera" accept="image/*" capture="environment"
+         style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+
   <div class="toast" id="toast">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4.5 12.5l5 5 10-11" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
@@ -1375,16 +1383,8 @@
       barcode: { name: "ザバス ミルクプロテイン", grams: 430, kcal: 103, p: 15, c: 10, f: 0, emoji: "🥛", tint: ["#E3EAFF", "#9DB2FF"] }
     };
 
-    var RECENT = [
-      { name: "オートミール＋ヨーグルト", grams: 260, kcal: 310, p: 18, c: 44, f: 6, emoji: "🥣", tint: ["#F0E6D8", "#D3B78E"], meta: "昨日 7:15" },
-      { name: "鮭おにぎり ２個", grams: 220, kcal: 380, p: 14, c: 70, f: 4, emoji: "🍙", tint: ["#EFEFF2", "#C7C7CC"], meta: "一昨日 12:30" },
-      { name: "牛赤身ステーキ", grams: 200, kcal: 420, p: 52, c: 0, f: 23, emoji: "🥩", tint: ["#F6D9D9", "#E08A8A"], meta: "3日前 19:40" }
-    ];
-
-    var FAVS = [
-      { name: "朝の定番セット", grams: 380, kcal: 420, p: 32, c: 41, f: 3, emoji: "🍌", tint: ["#FFF3C4", "#F2CE4B"], meta: "週5回" },
-      { name: "プロテイン（水）", grams: 350, kcal: 120, p: 24, c: 3, f: 1, emoji: "🥤", tint: ["#D9E7FF", "#8FB4FF"], meta: "週6回" }
-    ];
+    // 履歴・お気に入りは自分の記録から作る（recentItems/favItems）。
+    // ここに固定データを置くと、タップした瞬間に食べていないものが記録に入る。
 
     // ------------------------------------------------------------
     // Helpers
@@ -1709,6 +1709,169 @@
     }
 
     // --- Photo / barcode → analysis card ---
+    // ------------------------------------------------------------
+    // 候補リスト（履歴・よく食べるもの）
+    //   ダミーではなく自分の記録から作る。ここが固定データだと、
+    //   タップした瞬間に食べていないものが記録に入る。
+    // ------------------------------------------------------------
+    var TINTS = [
+      ["#DFF3DC", "#93D18C"], ["#FFE7C2", "#FFC97A"], ["#E3EAFF", "#9DB2FF"],
+      ["#FFD9CF", "#FF9E80"], ["#F0E6D8", "#D3B78E"], ["#EFEFF2", "#C7C7CC"]
+    ];
+    function tintOf(name) {
+      var h = 0;
+      for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
+      return TINTS[h % TINTS.length];
+    }
+    function mdLabel(date) {
+      var a = date.split("-");
+      return Number(a[1]) + "/" + Number(a[2]);
+    }
+
+    /** 記録済みの枠を新しい順に並べる（履歴・お気に入りの共通の元データ）。 */
+    function recordedEntries() {
+      if (!HIST || !HIST.days) return [];
+      var out = [];
+      [...HIST.days].reverse().forEach(function (d) {
+        (d.slots || []).forEach(function (sl) {
+          if (sl.status !== "recorded" || !sl.items) return;
+          out.push({
+            name: sl.items, date: d.date,
+            kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f, grams: sl.grams || 0,
+            emoji: "🍽️", tint: tintOf(sl.items)
+          });
+        });
+      });
+      return out;
+    }
+
+    /** 最近食べたもの（同じ内容は最新の1件だけ）。 */
+    function recentItems() {
+      var seen = {}, out = [];
+      recordedEntries().forEach(function (e) {
+        if (seen[e.name]) return;
+        seen[e.name] = 1;
+        out.push(Object.assign({}, e, { meta: mdLabel(e.date) }));
+      });
+      return out.slice(0, 12);
+    }
+
+    /** よく食べるもの（記録回数の多い順）。 */
+    function favItems() {
+      var byName = {};
+      recordedEntries().forEach(function (e) {
+        if (!byName[e.name]) byName[e.name] = { e: e, n: 0 };
+        byName[e.name].n++;
+      });
+      return Object.keys(byName)
+        .map(function (k) { return Object.assign({}, byName[k].e, { meta: byName[k].n + "回" }); })
+        .sort(function (a, b) { return Number(b.meta) - Number(a.meta); })
+        .slice(0, 12);
+    }
+
+    /** 直近で記録がある日の内容（「昨日と同じ」用）。 */
+    function lastDayEntries() {
+      if (!HIST || !HIST.days) return [];
+      var days = [...HIST.days].reverse();
+      for (var i = 0; i < days.length; i++) {
+        if (days[i].date === (HIST.today || "")) continue;
+        var got = (days[i].slots || []).filter(function (sl) {
+          return sl.status === "recorded" && sl.items;
+        });
+        if (got.length) {
+          return got.map(function (sl) {
+            return {
+              name: sl.items, kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f,
+              emoji: "🍽️", tint: tintOf(sl.items), meta: mdLabel(days[i].date)
+            };
+          });
+        }
+      }
+      return [];
+    }
+
+    /** 「前回と同じ」ボタンの見出しを実データに合わせる。候補が無ければ隠す。 */
+    function refreshQuick() {
+      var last = lastDayEntries();
+      var btn = $("repeat-btn");
+      if (!last.length) { btn.hidden = true; return; }
+      btn.hidden = false;
+      $("quick-title").textContent = last[0].meta + " と同じもの";
+      $("quick-sub").textContent = last.length === 1
+        ? last[0].name + " ／ " + last[0].kcal + " kcal"
+        : last[0].name + " ほか" + (last.length - 1) + "件";
+    }
+
+    // ------------------------------------------------------------
+    // 写真撮影 → サーバで解析（写真／栄養成分表示ラベル）
+    //   ここが本物の記録経路。端末側では縮小だけを行い、
+    //   解析も換算もサーバに任せる（画面とAIで違う数値を出さないため）。
+    // ------------------------------------------------------------
+    var pendingMode = "meal";
+
+    function capture(mode) {
+      pendingMode = mode;
+      var input = $("camera");
+      input.value = "";
+      input.click();
+    }
+
+    /** 長辺 maxPx に縮小して JPEG(base64) にする。原寸のまま送ると通信も関数も重い。 */
+    function shrink(file, maxPx) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        var url = URL.createObjectURL(file);
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          var r = Math.min(1, maxPx / Math.max(img.width, img.height));
+          var cv = document.createElement("canvas");
+          cv.width = Math.round(img.width * r);
+          cv.height = Math.round(img.height * r);
+          cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+          resolve(cv.toDataURL("image/jpeg", 0.82).split(",")[1]);
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("decode")); };
+        img.src = url;
+      });
+    }
+
+    $("camera").addEventListener("change", async function () {
+      var file = this.files && this.files[0];
+      if (!file) return;
+      var isLabel = pendingMode === "label";
+      openScreen(isLabel ? "栄養成分表示を読み取り中" : "解析中");
+      $("screen-body").innerHTML =
+        '<div class="analyzing"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
+
+      try {
+        var b64 = await shrink(file, 1280);
+        var res = await api("/liff/meal/photo", {
+          method: "POST",
+          body: JSON.stringify({ image: b64, mediaType: "image/jpeg", mode: pendingMode })
+        });
+        // 重量が読めなかったラベル（「1本あたり」等）は、比例させずそのまま1食分として扱う
+        var grams = res.grams > 0 ? res.grams : 0;
+        runAnalysis({
+          name: res.items || (isLabel ? "商品" : "食事"),
+          grams: grams,
+          kcal: res.kcal, p: res.p, c: res.c, f: res.f,
+          emoji: isLabel ? "🏷️" : "🍽️",
+          tint: isLabel ? ["#E3EAFF", "#9DB2FF"] : ["#DFF3DC", "#93D18C"]
+        }, {
+          title: isLabel ? "読み取り結果" : "解析結果",
+          delay: 0,
+          note: isLabel && grams === 0
+            ? "重量が書かれていないので、表示の1回分として記録します。"
+            : ""
+        });
+      } catch (e) {
+        closeScreen();
+        toast(isLabel
+          ? "栄養成分表示を読み取れなかった。表示部分を大きく写してね"
+          : "うまく解析できなかった。もう一度撮ってね");
+      }
+    });
+
     function runAnalysis(base, opts) {
       opts = opts || {};
       openScreen(opts.title || "解析結果");
@@ -1720,12 +1883,11 @@
 
       setTimeout(function () {
         var grams = base.grams;
-        var per = {
-          kcal: base.kcal / base.grams,
-          p: base.p / base.grams,
-          c: base.c / base.grams,
-          f: base.f / base.grams
-        };
+        // 重量が分からない場合（ラベルに「1本あたり」しか無い等）は比例させない。
+        // 分からない重さを推測して掛け算すると、記録が静かに何倍にもなる。
+        var per = grams > 0
+          ? { kcal: base.kcal / grams, p: base.p / grams, c: base.c / grams, f: base.f / grams }
+          : null;
         var slot = pendingSlot || nextOpenSlot();
 
         body.innerHTML =
@@ -1744,14 +1906,17 @@
                   '" data-slot="' + s + '">' + s + "</button>";
               }).join("") +
             "</div>" +
-            '<div class="card stepper">' +
-              '<span class="step-l"><b>重さ</b><span>AI推定 · 変更できます</span></span>' +
-              '<span class="step-ctl">' +
-                '<button class="step-btn" id="minus" aria-label="減らす">−</button>' +
-                '<span class="step-val num" id="grams">' + grams + " g</span>" +
-                '<button class="step-btn" id="plus" aria-label="増やす">＋</button>' +
-              "</span>" +
-            "</div>" +
+            (per
+              ? '<div class="card stepper">' +
+                '<span class="step-l"><b>重さ</b><span>' +
+                  (opts.note ? "変更できます" : "AI推定 · 変更できます") + "</span></span>" +
+                '<span class="step-ctl">' +
+                  '<button class="step-btn" id="minus" aria-label="減らす">−</button>' +
+                  '<span class="step-val num" id="grams">' + grams + " g</span>" +
+                  '<button class="step-btn" id="plus" aria-label="増やす">＋</button>' +
+                "</span>" +
+              "</div>"
+              : "") +
             '<div class="macro-grid">' +
               '<div class="mg-cell"><span class="mg-k">KCAL</span><span class="mg-v num" id="v-kcal">0</span></div>' +
               '<div class="mg-cell"><span class="mg-k" style="color:var(--blue)">P</span><span class="mg-v num" id="v-p">0</span></div>' +
@@ -1759,27 +1924,38 @@
               '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="v-f">0</span></div>' +
             "</div>" +
             '<button class="save" id="save">保存</button>' +
-            '<p class="hint">確認は不要です。保存すればすぐ反映されます。</p>' +
+            '<p class="hint">' +
+              (opts.note || "確認は不要です。保存すればすぐ反映されます。") + "</p>" +
           "</div>";
 
         var chosenSlot = slot;
 
+        function values() {
+          return per
+            ? { kcal: per.kcal * grams, p: per.p * grams, c: per.c * grams, f: per.f * grams }
+            : { kcal: base.kcal, p: base.p, c: base.c, f: base.f };
+        }
         function paint() {
-          $("grams").textContent = grams + " g";
-          $("v-kcal").textContent = fmt(per.kcal * grams);
-          $("v-p").textContent = fmt(per.p * grams);
-          $("v-c").textContent = fmt(per.c * grams);
-          $("v-f").textContent = fmt(per.f * grams);
-          $("minus").disabled = grams <= 20;
+          var v = values();
+          if (per) {
+            $("grams").textContent = grams + " g";
+            $("minus").disabled = grams <= 20;
+          }
+          $("v-kcal").textContent = fmt(v.kcal);
+          $("v-p").textContent = fmt(v.p);
+          $("v-c").textContent = fmt(v.c);
+          $("v-f").textContent = fmt(v.f);
         }
         paint();
 
-        $("minus").addEventListener("click", function () {
-          grams = Math.max(20, grams - 20); paint();
-        });
-        $("plus").addEventListener("click", function () {
-          grams = Math.min(2000, grams + 20); paint();
-        });
+        if (per) {
+          $("minus").addEventListener("click", function () {
+            grams = Math.max(20, grams - 20); paint();
+          });
+          $("plus").addEventListener("click", function () {
+            grams = Math.min(2000, grams + 20); paint();
+          });
+        }
 
         $("slot-pick").addEventListener("click", function (e) {
           var btn = e.target.closest("[data-slot]");
@@ -1790,17 +1966,15 @@
         });
 
         $("save").addEventListener("click", function () {
+          var v = values();
           commit({
             name: base.name,
-            kcal: per.kcal * grams,
-            p: per.p * grams,
-            c: per.c * grams,
-            f: per.f * grams,
+            kcal: v.kcal, p: v.p, c: v.c, f: v.f,
             emoji: base.emoji,
             tint: base.tint
           }, chosenSlot);
         });
-      }, 780);
+      }, opts.delay != null ? opts.delay : 780);
     }
 
     // --- List screens (履歴 / お気に入り) ---
@@ -1872,10 +2046,18 @@
       setSheet(false);
 
       setTimeout(function () {
-        if (act === "photo") runAnalysis(LIBRARY.photo, { title: "解析結果" });
-        else if (act === "barcode") runAnalysis(LIBRARY.barcode, { title: "商品を読み取りました" });
-        else if (act === "recent") runList("最近食べたもの", RECENT, "タップするとそのまま記録されます。");
-        else if (act === "fav") runList("お気に入り", FAVS, "よく食べるものはワンタップで記録できます。");
+        // オフライン（LINE外プレビュー）だけダミーで動かす。オンラインでは必ず実写真を解析する
+        if (act === "photo") {
+          if (online) capture("meal");
+          else runAnalysis(LIBRARY.photo, { title: "解析結果（デモ）" });
+        } else if (act === "label") {
+          if (online) capture("label");
+          else runAnalysis(LIBRARY.barcode, { title: "読み取り結果（デモ）" });
+        } else if (act === "recent") {
+          runList("最近食べたもの", recentItems(), "タップするとそのまま記録されます。");
+        } else if (act === "fav") {
+          runList("よく食べるもの", favItems(), "記録の多い順に出しています。");
+        }
         else if (act === "manual") runManual();
         else if (act === "skip" && pendingSlot) markSkipped(pendingSlot);
       }, 240);
@@ -1883,11 +2065,13 @@
 
     // --- Repeat yesterday（空いている枠に入れる） ---
     $("repeat-btn").addEventListener("click", function () {
-      commit({
-        name: "オイコス・バナナ・プロテイン",
-        kcal: 420, p: 32, c: 41, f: 3,
-        emoji: "🍌", tint: ["#FFF3C4", "#F2CE4B"]
-      }, nextOpenSlot());
+      var last = lastDayEntries();
+      if (!last.length) {
+        toast("繰り返せる記録がまだ無いよ");
+        return;
+      }
+      // 何を入れるかは必ず選ばせる（1タップで勝手に決めない）
+      runList("前回と同じものを選ぶ", last, "タップするとその内容で記録します。");
     });
 
     // --- Esc closes layers ---
@@ -1937,6 +2121,14 @@
     //   3値（記録済み・未記録・食べてない申告）を最後まで混ぜないのが要点。
     // ------------------------------------------------------------
     var HIST = null;   // { perDay, days:[{date,slots,totals,recorded,unrecorded,skipped}], streak }
+
+    /** 履歴の読み込み（履歴画面と候補リストで共用。1回だけ取ればいい）。 */
+    async function loadHistory() {
+      if (!online) return;
+      var data = await api("/liff/history?days=14", { method: "GET" });
+      HIST = data.meals;
+      HIST.today = data.to;
+    }
     var histSel = -1;  // 選択中の日（days の添字）
 
     var WD = ["日", "月", "火", "水", "木", "金", "土"];
@@ -1957,8 +2149,7 @@
         return;
       }
       try {
-        var data = await api("/liff/history?days=14", { method: "GET" });
-        HIST = data.meals;
+        await loadHistory();
         histSel = -1;
         renderHistory();
         $("history-hint").textContent =
@@ -2172,6 +2363,9 @@
       if (!online) {
         // LINE の外で開いた場合だけ、デモだと明示したうえでダミーを見せる
         seedDemo();
+        HIST = demoHistory();        // 候補リスト（履歴・お気に入り）もデモで動かす
+        HIST.today = HIST.days[HIST.days.length - 1].date;
+        refreshQuick();
         renderTimeline(null);
         renderSummary(false);
         $("home-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
@@ -2183,7 +2377,10 @@
         adoptServerDay(data);
         renderTimeline(null);
         renderSummary(false);
-        $("home-hint").innerHTML = "写真を撮るだけで記録できます。<br>重さと栄養はAIが推定します。";
+        $("home-hint").innerHTML =
+          "写真を撮るだけで記録できます。<br>加工食品は栄養成分表示を撮ると正確だよ。";
+        // 履歴・お気に入り・「前回と同じ」は自分の記録から作るので先に読んでおく
+        loadHistory().then(refreshQuick);
       } catch (_) {
         // 失敗してもデモには戻さない。空のまま「読めなかった」と正直に出す。
         $("home-hint").textContent = "記録を読み込めませんでした。通信を確認して開き直してね。";
