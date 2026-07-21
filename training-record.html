@@ -425,6 +425,202 @@
 
   .hint { font-size: 12px; color: var(--label-3); text-align: center; padding: 2px 12px; line-height: 1.5; }
 
+  /* ---------------- 人体マップ（疲労・回復） ---------------- */
+  /* 疲労は赤の濃淡、回復は黄緑、未使用はグレー。色だけに頼らず必ず一覧も併記する。 */
+  :root {
+    --fat-high: #ce4b38;
+    --fat-mid: #e07e68;
+    --fat-low: #f0b2a2;
+    --fat-ok: #8fbf8c;
+    --fat-none: #bab6bd;
+    --sil: #c9c5cb;
+    --ink: rgba(46, 42, 50, 0.32);
+    --ink-soft: rgba(46, 42, 50, 0.24);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fat-none: #4a464e;
+      --sil: #3a363e;
+      --ink: rgba(255, 255, 255, 0.26);
+      --ink-soft: rgba(255, 255, 255, 0.18);
+    }
+  }
+  :root[data-theme="dark"] {
+    --fat-none: #4a464e;
+    --sil: #3a363e;
+    --ink: rgba(255, 255, 255, 0.26);
+    --ink-soft: rgba(255, 255, 255, 0.18);
+  }
+  :root[data-theme="light"] {
+    --fat-none: #bab6bd;
+    --sil: #c9c5cb;
+    --ink: rgba(46, 42, 50, 0.32);
+    --ink-soft: rgba(46, 42, 50, 0.24);
+  }
+
+  .bodies { display: flex; justify-content: center; gap: 8px; padding: 4px 0 2px; }
+  .body-col { flex: 1; max-width: 172px; }
+  /* 下地画像の生成りの余白がそのまま出ると「貼り付けた写真」に見えるので、
+     角を丸めてカードとして見せる。暗所ではまぶしいので少し落とす。 */
+  .body-col svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 14px;
+    background: #f5f3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    .body-col svg { filter: brightness(0.78) contrast(1.06); }
+  }
+  :root[data-theme="dark"] .body-col svg { filter: brightness(0.78) contrast(1.06); }
+  :root[data-theme="light"] .body-col svg { filter: none; }
+  .body-cap { text-align: center; font-size: 11px; color: var(--label-2); margin-top: 2px; }
+
+  /* 解剖図の陰影を殺さないよう multiply で重ねる。ベタ塗りすると
+     下地の筋線維が消えて安っぽくなるので、必ず透過合成にする。 */
+  .m {
+    mix-blend-mode: multiply;
+    opacity: 0.85;
+    transition: fill 0.4s var(--ease), opacity 0.4s var(--ease);
+  }
+  .m.high { fill: var(--fat-high); }
+  .m.moderate { fill: var(--fat-mid); }
+  .m.light { fill: var(--fat-low); }
+  .m.recovered { fill: var(--fat-ok); }
+  /* 未使用は塗らない。下地のグレーがそのまま「使っていない」を表す。 */
+  .m.untouched { display: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 8px 4px 0; }
+  .lg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--label-2); }
+  .lg i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+
+  .mus-list { display: flex; flex-direction: column; gap: 6px; }
+  .mus-row { display: flex; align-items: center; gap: 10px; padding: 10px 13px; }
+  .mus-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .mus-name { flex: 1; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .mus-meta { font-size: 12px; color: var(--label-2); }
+
+  .sess-row { display: flex; align-items: center; gap: 12px; padding: 12px 13px; }
+  .sess-date { flex: none; width: 44px; font-size: 12px; font-weight: 700; color: var(--label-2); }
+  .sess-body { flex: 1; min-width: 0; }
+  .sess-ex {
+    font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sess-meta { font-size: 11px; color: var(--label-2); margin-top: 1px; }
+
+  /* ---------------- メニュー編集（T12） ---------------- */
+  .sec-edit { font-size: 15px; font-weight: 600; color: var(--blue); }
+  .s-save { justify-self: end; font-size: 15px; font-weight: 700; color: var(--blue); }
+  .s-save[disabled] { color: var(--label-3); }
+
+  /* 何回目をやるかの切り替え（セグメンテッドコントロール） */
+  .segs {
+    display: flex; gap: 4px; padding: 3px;
+    background: var(--fill); border-radius: 11px;
+  }
+  .seg {
+    flex: 1; min-width: 0; padding: 7px 4px;
+    border-radius: 8px; font-size: 13px; font-weight: 600;
+    color: var(--label-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: background 0.2s var(--ease), color 0.2s var(--ease);
+  }
+  .seg.on { background: var(--card-elevated); color: var(--label); box-shadow: var(--shadow-card); }
+
+  .lbl-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; margin-top: 12px;
+  }
+  .lbl-row span { flex: none; font-size: 14px; color: var(--label-2); font-weight: 600; }
+  .lbl-row input {
+    flex: 1; min-width: 0;
+    font: inherit; font-size: 16px; font-weight: 600;
+    color: var(--label); background: none; border: 0; padding: 0;
+    text-align: right;
+  }
+  .lbl-row input:focus { outline: none; }
+
+  .edit-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+  .ed-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 12px 11px 6px;
+    background: var(--card);
+    /* ドラッグ中に position が変わるので、掴んだ行だけ浮かせる基準を作る */
+    position: relative; z-index: 1;
+    touch-action: pan-y;
+  }
+  .ed-row.dragging {
+    z-index: 5;
+    background: var(--card-elevated);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18), 0 0 0 0.5px var(--separator);
+    transform-origin: center;
+  }
+  .ed-handle {
+    flex: none; width: 38px; height: 40px;
+    display: grid; place-items: center;
+    color: var(--label-3);
+    /* ここだけスクロールを止める。行全体で止めると一覧がスクロールできなくなる */
+    touch-action: none;
+  }
+  .ed-body { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+  .ed-name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .ed-meta { font-size: 12px; color: var(--label-2); }
+  .ed-chev { flex: none; color: var(--label-3); padding-right: 4px; }
+
+  .add-row {
+    width: 100%; margin-top: 8px; padding: 14px;
+    border-radius: var(--r-card);
+    background: color-mix(in srgb, var(--blue) 10%, transparent);
+    color: var(--blue); font-size: 15px; font-weight: 600;
+  }
+  .add-row:active { background: color-mix(in srgb, var(--blue) 18%, transparent); }
+  .add-row[disabled] { background: var(--fill); color: var(--label-3); }
+
+  /* 種目ピッカー / 各種シート内の共通部品 */
+  .sheet-title { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
+  .sheet-sub { font-size: 12px; color: var(--label-2); text-align: center; margin-top: 4px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .chip {
+    padding: 7px 13px; border-radius: 18px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font-size: 14px; font-weight: 600; color: var(--label-2);
+  }
+  .chip.on { background: var(--blue); color: #fff; box-shadow: none; }
+
+  .search {
+    width: 100%; margin-top: 12px; padding: 11px 14px;
+    border: 0; border-radius: 11px;
+    background: var(--fill); color: var(--label);
+    font: inherit; font-size: 16px;
+  }
+  .search:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+  .pick-list {
+    margin-top: 12px; max-height: 46vh; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .pick-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 13px 14px; border-radius: 12px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    text-align: left;
+  }
+  .pick-row:active { background: var(--fill); }
+  .pick-name { flex: 1; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .pick-meta { flex: none; font-size: 11px; color: var(--label-2); }
+  .pick-row.cur { box-shadow: 0 0 0 1.5px var(--blue); }
+
+  .act-btn {
+    width: 100%; padding: 15px; border-radius: 13px; margin-top: 8px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font-size: 16px; font-weight: 600; text-align: center;
+  }
+  .act-btn:active { background: var(--fill); }
+  .act-btn.danger { color: var(--red); }
+
   .toast {
     position: absolute; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom));
     z-index: 95;
@@ -452,13 +648,14 @@
       <h1 id="day-part">胸</h1>
       <p class="sub" id="day-sub">7月20日 月曜日 ・ 1回目</p>
     </div>
-    <span class="pill" id="day-pill">全3種目</span>
+    <button class="pill" id="history-btn">からだ・履歴</button>
   </header>
 
   <div class="scroll" id="home-scroll">
+    <div class="segs" id="cycle-segs" hidden></div>
     <div class="sec-head">
       <h2 class="sec-title">今日の種目</h2>
-      <span class="sec-meta" id="home-meta">前回の記録つき</span>
+      <button class="sec-edit" id="menu-btn">編集</button>
     </div>
     <div id="ex-list" style="display:flex;flex-direction:column;gap:8px"></div>
     <p class="hint" id="home-hint">セットごとに重量と回数を記録します。<br>次の重量は記録から自動で決まります。</p>
@@ -558,7 +755,69 @@
     </div>
   </section>
 
+  <!-- ============ からだ・履歴 ============ -->
+  <section class="screen" id="history" role="dialog" aria-label="からだと履歴">
+    <div class="s-top">
+      <button class="s-abort" id="history-back" style="color:var(--blue)">閉じる</button>
+      <div class="s-timer"><div class="v">からだ・履歴</div></div>
+      <span></span>
+    </div>
+    <div class="s-body" style="gap:12px">
+      <div class="bodies">
+        <div class="body-col">
+          <div id="body-front"></div>
+          <div class="body-cap">前面</div>
+        </div>
+        <div class="body-col">
+          <div id="body-back"></div>
+          <div class="body-cap">背面</div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="lg"><i style="background:var(--fat-high)"></i>強い疲労</span>
+        <span class="lg"><i style="background:var(--fat-mid)"></i>疲労</span>
+        <span class="lg"><i style="background:var(--fat-low)"></i>軽い疲労</span>
+        <span class="lg"><i style="background:var(--fat-ok)"></i>回復済み</span>
+        <span class="lg"><i style="background:var(--fat-none)"></i>未使用</span>
+      </div>
+
+      <div class="sec-head"><h2 class="sec-title">部位ごとの状態</h2></div>
+      <div class="mus-list" id="mus-list"></div>
+
+      <div class="sec-head"><h2 class="sec-title">最近のトレーニング</h2></div>
+      <div class="mus-list" id="sess-list"></div>
+
+      <p class="hint" id="history-hint">
+        回復日数は部位の大きさから計算しています。<br>補助的に使う筋肉（協働筋）の疲労も含みます。
+      </p>
+    </div>
+  </section>
+
   <!-- ============ RIR / 休憩シート ============ -->
+  <!-- ============ メニュー編集画面（T12） ============ -->
+  <section class="screen" id="menu" role="dialog" aria-label="メニューを編集">
+    <div class="s-top">
+      <button class="s-abort" id="menu-cancel" style="color:var(--blue)">キャンセル</button>
+      <div class="s-timer"><div class="v">メニューを編集</div></div>
+      <button class="s-save" id="menu-save">保存</button>
+    </div>
+    <div class="s-body">
+      <div class="segs" id="menu-segs" hidden></div>
+      <label class="lbl-row card">
+        <span>この日の名前</span>
+        <input id="menu-label" maxlength="30" placeholder="胸" autocomplete="off">
+      </label>
+      <div class="edit-list" id="edit-list"></div>
+      <button class="add-row" id="add-ex">＋ 種目を追加</button>
+      <p class="hint" id="menu-hint">
+        ≡ をつまんで上下にドラッグすると順番を入れ替えられます。<br>
+        行をタップすると種目の差し替え・セット数の変更・削除ができます。<br>
+        変更は「保存」を押すまで反映されません。
+      </p>
+    </div>
+  </section>
+
   <div class="scrim" id="scrim"></div>
   <div class="sheet" id="sheet" role="dialog" aria-label="あと何回できそう">
     <div class="sheet-inner" id="sheet-inner"></div>
@@ -617,15 +876,95 @@
     //   progression … 各種目の次回推奨開始重量。ルールで自動更新
     //   logs        … 実績の生ログ（exercise_logs 相当）
     // ==========================================================
-    var PLAN = {
-      part: "胸",
-      cycleNo: 1,
-      exercises: [
-        { name: "ベンチプレス", sets: 3, targetReps: 10, step: 2.5 },
-        { name: "インクラインプレス", sets: 3, targetReps: 10, step: 2.5 },
-        { name: "チェストフライ", sets: 3, targetReps: 12, step: 1.25 }
-      ]
-    };
+    // 週のサイクル全体（weekly_cycle そのもの）。読み込むまでは空にしておく。
+    // ここに既定メニューを置くと、未登録の人に他人のメニューを見せることになる。
+    var CYCLE = null;
+    var sessionIdx = 0;
+    var SESSION_KEY = "clew.sessionIdx";
+
+    // 表示中の1セッション。CYCLE から組み立てる（直接編集しない）
+    var PLAN = { part: "", cycleNo: 1, exercises: [] };
+
+    // 種目ライブラリ（/liff/catalog）。刻み(stepKg)と目標レップの供給源。
+    var CATALOG = { parts: [], items: [] };
+    var catalogByName = {};
+
+    function indexCatalog() {
+      catalogByName = {};
+      CATALOG.items.forEach(function (it) { catalogByName[it.name] = it; });
+    }
+
+    /** "8-10" → 10。範囲の上限を目標レップとして扱う。 */
+    function parseTargetReps(reps) {
+      var nums = String(reps || "").match(/\d+/g);
+      if (!nums || !nums.length) return null;
+      return Math.max.apply(null, nums.map(Number));
+    }
+
+    /** 計画の1種目を、記録画面が使う形（数値の目標レップと刻み）に変換する。 */
+    function toPlanExercise(e) {
+      var cat = catalogByName[e.name];
+      return {
+        name: e.name,
+        sets: e.sets,
+        reps: e.reps,
+        targetReps: parseTargetReps(e.reps) || (cat && cat.targetReps) || 10,
+        step: (cat && cat.stepKg) || 2.5
+      };
+    }
+
+    /**
+     * weekly_cycle は state に JSON 文字列で入っているので、文字列でもオブジェクトでも
+     * 受けられるようにする。壊れていたら null（既定メニューをでっち上げない）。
+     */
+    function normalizeCycle(raw) {
+      var wc = raw;
+      if (typeof wc === "string") {
+        try { wc = JSON.parse(wc); } catch (_) { return null; }
+      }
+      if (!wc || !Array.isArray(wc.sessions) || !wc.sessions.length) return null;
+      return {
+        frequency: wc.sessions.length,
+        sessions: wc.sessions.map(function (s, i) {
+          return {
+            session_number: i + 1,
+            split_label: String(s.split_label || (i + 1) + "回目"),
+            exercises: (s.exercises || []).map(function (e) {
+              return { name: String(e.name), sets: Number(e.sets) || 3, reps: String(e.reps || "8-12") };
+            })
+          };
+        })
+      };
+    }
+
+    function planFromSession(s) {
+      return {
+        part: s.split_label,
+        cycleNo: s.session_number,
+        exercises: (s.exercises || []).map(toPlanExercise)
+      };
+    }
+
+    /** 表示するセッションを切り替える（ホームの見た目はすべてここ経由で変わる）。 */
+    function applySession(i) {
+      if (!CYCLE || !CYCLE.sessions.length) {
+        PLAN = { part: "", cycleNo: 1, exercises: [] };
+      } else {
+        sessionIdx = Math.min(Math.max(0, i), CYCLE.sessions.length - 1);
+        PLAN = planFromSession(CYCLE.sessions[sessionIdx]);
+        try { localStorage.setItem(SESSION_KEY, String(sessionIdx)); } catch (_) { /* プライベートモード */ }
+      }
+      renderHeader();
+      renderCycleSegs();
+      renderHome();
+    }
+
+    function storedSessionIdx() {
+      try {
+        var v = Number(localStorage.getItem(SESSION_KEY));
+        return Number.isInteger(v) && v >= 0 ? v : 0;
+      } catch (_) { return 0; }
+    }
 
     // 前回の実績（progression_state に相当。実際はサーバから受け取る）。
     // 履歴が無い種目は「初回」として扱い、ありもしない前回を作らない。
@@ -643,11 +982,73 @@
      * 実在しない実績を見せ、しかも次回重量の計算までそこから始まってしまう。
      */
     function seedDemo() {
+      CYCLE = {
+        frequency: 3,
+        sessions: [
+          { session_number: 1, split_label: "胸", exercises: [
+            { name: "ベンチプレス", sets: 3, reps: "8-10" },
+            { name: "インクラインダンベルプレス", sets: 3, reps: "8-12" },
+            { name: "ケーブルフライ", sets: 3, reps: "12-15" }
+          ] },
+          { session_number: 2, split_label: "背中", exercises: [
+            { name: "ラットプルダウン", sets: 3, reps: "8-12" },
+            { name: "シーテッドロウ", sets: 3, reps: "8-12" }
+          ] },
+          { session_number: 3, split_label: "脚", exercises: [
+            { name: "スクワット", sets: 4, reps: "6-10" },
+            { name: "レッグプレス", sets: 3, reps: "10-12" }
+          ] }
+        ]
+      };
+      CATALOG = {
+        parts: ["胸", "背中", "脚", "肩", "腕", "腹"],
+        items: [
+          { name: "ベンチプレス", part: "胸", stepKg: 2.5, targetReps: 10 },
+          { name: "インクラインダンベルプレス", part: "胸", stepKg: 2.5, targetReps: 10 },
+          { name: "ケーブルフライ", part: "胸", stepKg: 1.25, targetReps: 12 },
+          { name: "ダンベルフライ", part: "胸", stepKg: 1.25, targetReps: 12 },
+          { name: "ラットプルダウン", part: "背中", stepKg: 2.5, targetReps: 10 },
+          { name: "シーテッドロウ", part: "背中", stepKg: 2.5, targetReps: 10 },
+          { name: "ベントオーバーロウ", part: "背中", stepKg: 2.5, targetReps: 10 },
+          { name: "スクワット", part: "脚", stepKg: 5, targetReps: 10 },
+          { name: "レッグプレス", part: "脚", stepKg: 5, targetReps: 12 },
+          { name: "ルーマニアンデッドリフト", part: "脚", stepKg: 2.5, targetReps: 10 },
+          { name: "ショルダープレス", part: "肩", stepKg: 2.5, targetReps: 10 },
+          { name: "サイドレイズ", part: "肩", stepKg: 1.25, targetReps: 15 },
+          { name: "ダンベルカール", part: "腕", stepKg: 1.25, targetReps: 12 },
+          { name: "トライセプスプレスダウン", part: "腕", stepKg: 1.25, targetReps: 12 }
+        ]
+      };
+      indexCatalog();
       progression = {
         "ベンチプレス": { weight: 45, lastReps: 10, lastRir: 2 },
-        "インクラインプレス": { weight: 30, lastReps: 10, lastRir: 1 },
-        "チェストフライ": { weight: 15, lastReps: 12, lastRir: 3 }
+        "インクラインダンベルプレス": { weight: 30, lastReps: 10, lastRir: 1 },
+        "ケーブルフライ": { weight: 15, lastReps: 12, lastRir: 3 }
       };
+      // 「胸の日の翌日」を想定したデモ（協働筋の三頭・前肩も疲労している状態）
+      muscleStates = [
+        { id: "chest", label: "大胸筋", status: "high", fatigue: 0.85, daysUntilRecovered: 2 },
+        { id: "triceps", label: "上腕三頭筋", status: "moderate", fatigue: 0.45, daysUntilRecovered: 1 },
+        { id: "front_delt", label: "三角筋前部", status: "moderate", fatigue: 0.42, daysUntilRecovered: 1 },
+        { id: "side_delt", label: "三角筋中部", status: "light", fatigue: 0.2, daysUntilRecovered: 1 },
+        { id: "lat", label: "広背筋", status: "recovered", fatigue: 0.05, daysUntilRecovered: 0 },
+        { id: "trap", label: "僧帽筋", status: "recovered", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "biceps", label: "上腕二頭筋", status: "recovered", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "quad", label: "大腿四頭筋", status: "recovered", fatigue: 0.08, daysUntilRecovered: 0 },
+        { id: "glute", label: "大殿筋", status: "recovered", fatigue: 0.06, daysUntilRecovered: 0 },
+        { id: "hamstring", label: "ハムストリング", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "calf", label: "下腿三頭筋", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "abs", label: "腹直筋", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "oblique", label: "腹斜筋", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "erector", label: "脊柱起立筋", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "rear_delt", label: "三角筋後部", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "forearm", label: "前腕", status: "untouched", fatigue: 0, daysUntilRecovered: 0 },
+        { id: "adductor", label: "内転筋", status: "untouched", fatigue: 0, daysUntilRecovered: 0 }
+      ];
+      lastSessions = [
+        { date: "2026-07-20", exercises: ["ベンチプレス", "インクラインダンベルプレス", "ケーブルフライ"], sets: 9, reps: 96, volumeKg: 2790 },
+        { date: "2026-07-17", exercises: ["スクワット", "レッグプレス"], sets: 6, reps: 60, volumeKg: 3300 }
+      ];
     }
 
     var logs = []; // { exercise, setNo, weight, reps, rir }
@@ -724,18 +1125,40 @@
     // ==========================================================
     // ホーム
     // ==========================================================
-    (function renderHeader() {
+    function renderHeader() {
       var d = new Date();
       var w = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-      $("day-part").textContent = PLAN.part;
-      $("day-sub").textContent =
-        (d.getMonth() + 1) + "月" + d.getDate() + "日 " + w + "曜日 ・ " + PLAN.cycleNo + "回目";
-      $("day-pill").textContent = "全" + PLAN.exercises.length + "種目";
-    })();
+      var date = (d.getMonth() + 1) + "月" + d.getDate() + "日 " + w + "曜日";
+      $("day-part").textContent = PLAN.part || "メニュー未設定";
+      $("day-sub").textContent = PLAN.exercises.length
+        ? date + " ・ " + PLAN.cycleNo + "回目 ・ 全" + PLAN.exercises.length + "種目"
+        : date;
+    }
+
+    /** 何回目をやるかの切り替え。1セッションしか無いときは出さない。 */
+    function renderCycleSegs() {
+      var wrap = $("cycle-segs");
+      wrap.innerHTML = "";
+      if (!CYCLE || CYCLE.sessions.length < 2) { wrap.hidden = true; return; }
+      wrap.hidden = false;
+      CYCLE.sessions.forEach(function (s, i) {
+        var b = document.createElement("button");
+        b.className = "seg" + (i === sessionIdx ? " on" : "");
+        b.textContent = s.split_label;
+        b.setAttribute("aria-pressed", i === sessionIdx ? "true" : "false");
+        b.addEventListener("click", function () {
+          if (i === sessionIdx) return;
+          applySession(i);
+        });
+        wrap.appendChild(b);
+      });
+    }
 
     function renderHome() {
       var wrap = $("ex-list");
       wrap.innerHTML = "";
+      $("start-btn").disabled = PLAN.exercises.length === 0;
+      $("start-btn").style.opacity = PLAN.exercises.length === 0 ? "0.4" : "";
       PLAN.exercises.forEach(function (e, i) {
         var p = progOf(e.name);
         var done = setsOf(e.name).length >= e.sets;
@@ -749,7 +1172,7 @@
           '<span class="ex-idx">' + (done ? "✓" : i + 1) + "</span>" +
           '<span class="ex-body">' +
             '<span class="ex-name">' + e.name + "</span>" +
-            '<span class="ex-meta num">' + e.sets + "セット × " + e.targetReps + "回</span>" +
+            '<span class="ex-meta num">' + e.sets + "セット × " + (e.reps || e.targetReps) + "回</span>" +
           "</span>" + right;
         wrap.appendChild(row);
       });
@@ -1002,13 +1425,594 @@
     });
 
     // ==========================================================
+    // 人体マップ（T15）
+    // 形は簡潔なシルエット。解剖学的な精密さより「どこが赤いか」が
+    // 一目で分かることを優先する。色だけに頼らず下に一覧も必ず出す。
+    // ==========================================================
+    // 下地は自作の解剖図（body.webp）。SVGのviewBoxを画像のピクセル座標に合わせて
+    // あるので、筋肉のパスは画像上の実測座標でそのまま書ける。
+    // 前面 x174-492 / 背面 x803-1121（オフセット629）、どちらもy104-724で同一サイズ。
+    // 表示用は body-src.png を縮小＋圧縮したもの（1.2MB→99KB。表示は1図あたり172px幅なので
+    // これで足りる）。座標系は原画の 1289x816 のままなので、筋パスはそのまま載る。
+    var BODY_IMG = "body-map.jpg";
+
+    /* BODYMAP:START */
+    // このブロックは tools/build-bodymap.ts が liff/body-src.png から生成する。手で編集しない。
+    // 座標は下地画像のピクセル座標そのもの。輪郭は原画の線から取っているのでズレない。
+    var SHAPE_ABSOLUTE = true;
+    var SHAPES = {
+      "front": {
+        "chest": "<path d=\"M293,221L306,221L308,223L314,222L312,222L312,224L319,225L326,231L325,235L327,235L326,241L328,243L328,268L320,273L319,271L313,271L311,273L313,276L311,276L311,278L309,277L307,279L303,278L299,280L293,279L288,275L287,276L276,264L277,263L275,262L273,253L269,249L268,251L267,250L271,247L271,245L273,245L276,239L275,238L277,237L276,236L287,226L287,224L288,225L293,221Z\"/><path d=\"M363,221L374,221L372,222L373,223L381,228L382,227L390,238L390,241L393,243L392,244L395,246L395,249L392,251L392,255L388,260L390,262L385,268L386,269L372,279L358,279L348,274L345,275L338,270L337,266L337,248L339,246L338,238L341,231L340,230L342,229L341,228L349,223L363,221Z\"/>",
+        "front_delt": "<path d=\"M268,213L283,215L289,219L279,226L264,249L254,259L250,260L246,266L244,257L244,242L247,232L255,220L268,213Z\"/><path d=\"M391,213L403,215L415,226L421,241L420,264L419,263L417,265L416,262L404,253L388,228L377,219L379,216L391,213Z\"/>",
+        "biceps": "<path d=\"M266,255L268,257L269,256L268,259L270,260L269,265L271,270L266,274L267,285L263,288L268,292L266,293L264,299L252,310L251,307L247,307L243,303L246,280L248,274L252,271L252,267L259,259L260,260L266,255Z\"/><path d=\"M397,255L405,259L406,260L404,262L406,264L409,262L413,265L421,281L424,304L421,318L420,317L418,320L419,321L417,322L417,319L415,318L417,315L404,302L406,299L405,294L403,294L402,291L399,294L395,284L394,271L397,255Z\"/>",
+        "abs": "<path d=\"M337,279L355,286L358,290L356,296L351,299L338,294L336,292L337,279Z\"/><path d=\"M325,280L329,281L329,292L308,303L306,299L308,288L325,280Z\"/><path d=\"M354,282L366,284L362,288L362,292L365,297L364,312L366,313L364,318L364,329L366,332L364,337L364,351L361,360L361,369L366,375L373,373L381,366L381,369L362,388L347,413L340,429L336,432L329,432L324,427L304,389L284,368L284,366L296,374L301,374L304,370L301,337L299,332L302,327L302,319L300,315L302,310L302,294L303,293L303,300L305,304L307,306L312,305L304,314L304,322L308,327L329,323L332,320L333,311L333,319L338,324L357,327L361,323L361,314L354,306L358,306L361,303L362,291L360,286L354,282Z\"/><path d=\"M328,302L328,320L309,323L308,313L313,308L328,302Z\"/><path d=\"M337,302L347,305L357,313L357,323L337,320L337,302Z\"/><path d=\"M326,327L329,327L329,344L326,347L310,346L308,344L308,332L326,327Z\"/><path d=\"M339,327L357,332L357,344L355,346L339,347L337,345L337,328L339,327Z\"/>",
+        "oblique": "<path d=\"M379,322L378,334L382,365L380,365L377,369L376,368L373,372L366,374L363,372L363,356L365,356L367,350L368,332L371,331L379,322Z\"/><path d=\"M286,323L294,331L299,333L299,352L300,357L301,358L302,355L301,373L296,373L284,365L284,350L287,337L286,323Z\"/>",
+        "quad": "<path d=\"M283,372L289,379L289,402L275,433L272,444L283,372Z\"/><path d=\"M378,376L381,377L385,383L384,385L387,395L386,401L388,401L386,403L388,415L382,414L383,412L376,401L377,397L375,396L375,388L376,378L378,376Z\"/><path d=\"M293,382L297,387L296,392L298,392L298,398L296,400L299,405L301,404L300,408L302,408L301,411L303,411L303,419L306,422L305,425L307,432L315,453L314,460L318,464L320,480L321,483L323,483L323,488L321,490L322,494L320,492L321,487L319,487L320,482L319,479L317,479L318,472L313,460L311,460L311,455L308,452L309,449L306,438L300,431L297,418L298,414L296,414L297,404L296,398L295,397L294,399L295,387L293,382Z\"/><path d=\"M370,385L371,398L366,427L353,460L345,489L344,487L343,489L343,479L347,460L363,413L368,387L370,385Z\"/><path d=\"M292,403L291,408L293,410L297,433L304,449L303,451L305,452L307,468L305,481L306,487L304,489L305,494L301,511L299,513L299,518L292,515L290,509L291,507L289,507L290,505L287,501L283,488L280,464L282,429L292,403Z\"/><path d=\"M373,404L383,427L385,443L384,478L373,518L372,516L367,517L365,514L359,484L359,457L370,425L373,404Z\"/><path d=\"M278,436L278,480L282,494L281,496L283,497L282,500L286,510L288,511L287,513L289,514L288,517L290,519L290,530L289,534L287,535L278,511L279,507L277,499L275,499L272,477L272,454L278,436Z\"/><path d=\"M389,443L391,445L394,460L391,495L389,496L389,505L387,507L388,509L386,511L385,518L380,526L381,528L380,527L378,532L376,532L377,529L375,528L375,520L385,491L389,469L389,443Z\"/><path d=\"M310,466L318,495L319,519L315,532L312,535L307,536L303,528L303,515L311,481L310,466Z\"/><path d=\"M355,466L357,496L362,513L362,530L358,536L354,536L351,533L346,519L347,495L355,466Z\"/>",
+        "adductor": "<path d=\"M349,419L352,435L345,453L340,476L337,436L344,430L349,419Z\"/><path d=\"M315,422L318,423L320,426L319,427L321,428L320,429L328,436L328,454L327,452L326,453L327,466L325,478L320,453L313,435L315,422Z\"/>",
+        "forearm": "<path d=\"M232,305L236,324L234,338L229,349L216,367L217,368L214,370L215,371L212,373L213,374L210,375L209,373L211,371L210,370L215,354L218,334L232,305Z\"/><path d=\"M434,308L439,314L446,329L455,373L451,369L447,358L438,352L430,332L430,320L434,308Z\"/><path d=\"M418,328L427,337L437,358L436,359L438,360L451,386L421,345L415,333L418,328Z\"/><path d=\"M246,329L251,332L244,346L221,376L238,337L246,329Z\"/>"
+      },
+      "back": {
+        "trap": "<path d=\"M971,163L974,164L972,166L972,172L979,189L986,196L1020,213L1014,218L997,226L998,227L996,228L999,231L996,233L991,242L992,246L989,254L990,261L988,262L989,264L985,276L967,313L966,239L968,227L973,215L973,206L970,199L970,194L972,193L968,189L969,186L968,185L967,187L967,166L971,163Z\"/><path d=\"M950,164L957,165L956,166L959,169L957,179L958,187L956,188L957,193L951,208L958,234L958,312L943,284L935,261L936,259L934,258L938,241L937,228L929,220L914,213L908,212L939,196L946,189L951,179L953,170L953,166L950,164Z\"/>",
+        "erector": "<path d=\"M956,225L968,225L965,239L965,320L966,321L970,315L972,327L982,341L987,358L992,364L979,372L968,383L970,386L963,397L961,397L955,386L958,385L957,383L944,370L932,364L938,356L941,343L954,324L956,318L955,315L957,320L960,320L958,313L960,255L959,234L956,225Z\"/>",
+        "lat": "<path d=\"M1026,245L1032,249L1027,253L1024,261L1024,267L1020,272L1019,271L1018,273L1010,275L1000,274L1015,261L1026,245Z\"/><path d=\"M897,246L902,249L906,257L918,269L928,273L912,274L903,270L899,255L894,249L897,246Z\"/><path d=\"M902,273L912,278L924,278L935,274L940,288L953,311L952,312L954,313L955,318L953,324L940,343L937,356L932,362L930,352L918,331L910,309L905,294L906,293L904,291L905,289L903,288L904,282L902,273Z\"/><path d=\"M990,274L1007,279L1022,275L1020,294L1010,324L994,354L993,362L988,358L985,348L986,345L973,327L970,314L982,294L990,274Z\"/>",
+        "rear_delt": "<path d=\"M896,213L901,214L910,222L911,221L915,225L916,224L917,226L918,225L919,227L920,226L923,228L917,227L915,229L911,229L910,231L909,230L908,232L907,231L906,233L905,232L890,247L889,246L886,250L881,251L875,257L873,256L871,248L873,247L872,240L874,239L873,236L875,235L874,233L876,229L887,217L896,213Z\"/><path d=\"M1025,213L1032,214L1037,218L1038,217L1049,229L1053,242L1053,257L1051,258L1045,252L1044,253L1042,250L1041,251L1036,248L1016,230L1015,231L1008,227L1006,228L1007,225L1014,222L1025,213Z\"/><path d=\"M917,232L921,232L925,235L925,240L927,241L927,251L930,255L930,269L931,270L933,266L932,270L928,272L929,260L927,260L927,265L925,267L919,266L908,252L908,247L901,243L909,238L913,233L917,232Z\"/><path d=\"M1003,232L1008,232L1017,236L1025,244L1018,250L1009,263L996,271L998,273L1003,271L997,273L991,270L995,255L996,256L998,254L999,250L997,249L997,246L1003,232Z\"/>",
+        "triceps": "<path d=\"M890,251L896,257L895,259L898,267L897,275L898,276L899,274L899,285L897,285L898,289L893,300L881,309L882,305L884,304L884,293L879,279L881,276L880,273L882,272L881,269L883,268L885,263L884,261L886,260L885,258L890,251Z\"/><path d=\"M1032,252L1036,252L1038,254L1046,278L1041,290L1042,308L1030,297L1026,286L1028,260L1032,252Z\"/>",
+        "glute": "<path d=\"M922,366L933,368L942,373L959,393L961,434L950,444L948,443L947,445L945,444L943,446L929,446L923,448L913,459L909,435L907,433L904,435L902,444L902,435L909,392L911,391L910,385L910,387L912,387L911,378L913,370L922,366Z\"/><path d=\"M1001,366L1010,368L1014,377L1017,403L1020,414L1019,417L1022,425L1024,460L1023,440L1018,433L1013,446L1012,460L1002,448L996,446L979,445L970,441L965,436L964,397L967,391L972,385L971,384L982,374L992,368L1001,366Z\"/>",
+        "hamstring": "<path d=\"M1020,436L1022,440L1024,461L1024,476L1023,473L1022,480L1020,480L1020,491L1022,494L1021,492L1020,493L1017,491L1017,484L1015,484L1015,481L1018,478L1015,475L1014,476L1014,467L1015,469L1016,468L1015,455L1017,454L1016,449L1018,448L1017,444L1019,443L1018,440L1020,436Z\"/><path d=\"M967,443L975,448L983,450L978,474L977,501L975,503L968,467L967,443Z\"/><path d=\"M908,446L911,467L907,515L902,487L901,452L902,455L903,449L907,450L908,446Z\"/><path d=\"M930,450L929,457L927,457L928,462L926,463L925,467L926,476L926,474L924,474L924,516L922,517L923,521L920,525L921,530L918,533L918,540L917,538L915,541L917,542L913,544L912,528L910,528L912,524L911,509L913,505L913,478L915,478L914,473L916,472L916,465L917,466L921,462L919,458L921,457L921,454L930,450Z\"/><path d=\"M986,450L991,450L992,452L993,469L994,473L995,474L996,472L995,481L996,482L997,480L996,496L998,496L998,513L996,513L997,519L995,520L995,529L992,532L990,540L991,543L989,545L988,538L990,523L988,517L989,518L991,516L989,509L988,508L987,511L987,508L989,507L988,502L987,501L986,503L987,498L984,490L985,485L983,484L984,478L982,478L982,468L983,470L984,469L983,463L986,450Z\"/><path d=\"M933,451L939,451L943,470L936,517L936,549L937,547L935,546L931,535L928,520L929,513L927,510L929,472L933,451Z\"/><path d=\"M943,451L947,451L949,454L950,452L952,455L949,457L952,458L951,459L956,464L957,463L949,510L949,485L947,485L948,477L946,475L945,462L942,453L943,451Z\"/><path d=\"M995,452L1002,453L1005,456L1005,460L1007,463L1008,462L1007,465L1009,466L1008,469L1010,470L1009,473L1011,474L1011,487L1013,488L1013,523L1010,526L1013,528L1012,531L1014,535L1014,546L1013,544L1012,548L1008,544L1009,539L1007,537L1006,538L1007,535L1005,534L1008,533L1005,530L1004,531L1006,526L1003,521L1002,523L1002,487L1001,486L1000,488L1001,477L999,477L999,474L1000,476L1001,473L999,462L997,462L998,458L996,457L995,452Z\"/><path d=\"M944,497L946,523L947,526L949,526L949,519L949,534L948,542L949,529L948,528L946,531L944,550L945,555L943,557L943,563L940,549L939,522L942,499L944,497Z\"/><path d=\"M982,498L986,525L983,563L981,561L982,558L980,557L981,553L978,528L976,528L976,531L976,520L977,527L980,519L979,508L980,500L982,498Z\"/>",
+        "calf": "<path d=\"M919,547L923,553L925,561L925,614L920,622L914,623L908,617L906,591L911,562L919,547Z\"/><path d=\"M1005,547L1013,560L1014,571L1016,571L1015,576L1017,577L1016,584L1017,585L1018,583L1017,596L1019,596L1019,593L1019,606L1018,604L1017,605L1018,614L1016,614L1016,619L1011,623L1007,623L1007,621L1002,619L1000,614L1002,585L1001,584L1000,587L1001,573L999,570L999,565L1001,554L1005,547Z\"/><path d=\"M991,552L993,554L996,566L995,575L997,577L997,609L995,617L993,618L994,619L987,627L983,628L980,615L980,595L984,570L991,552Z\"/><path d=\"M941,585L944,589L945,596L945,614L943,615L944,619L942,628L939,628L933,623L929,614L929,598L931,597L929,596L929,592L933,592L936,588L940,588L941,585Z\"/>",
+        "forearm": "<path d=\"M882,256L875,276L875,283L869,290L866,298L864,298L865,285L869,272L875,261L882,256Z\"/><path d=\"M1043,256L1049,262L1050,261L1059,280L1061,291L1061,311L1059,302L1060,299L1049,281L1049,274L1042,257L1043,256Z\"/><path d=\"M1047,284L1054,293L1053,295L1055,296L1054,298L1056,299L1055,301L1057,304L1059,329L1054,337L1050,335L1049,317L1045,304L1046,300L1044,295L1047,284Z\"/><path d=\"M885,325L882,343L880,344L881,346L879,347L880,348L877,354L850,394L869,346L875,335L885,325Z\"/>"
+      }
+    };
+    /* BODYMAP:END */
+
+    var VIEW = {
+      front: { box: "168 96 334 640", offset: 0, label: "前面" },
+      back: { box: "797 96 334 640", offset: 629, label: "背面" }
+    };
+
+    var STATUS_JA = {
+      high: "強い疲労", moderate: "疲労", light: "軽い疲労",
+      recovered: "回復済み", untouched: "未使用"
+    };
+    var STATUS_COLOR = {
+      high: "var(--fat-high)", moderate: "var(--fat-mid)", light: "var(--fat-low)",
+      recovered: "var(--fat-ok)", untouched: "var(--fat-none)"
+    };
+
+    /** サーバから受け取った筋群の状態。空なら全て未使用として描く。 */
+    var muscleStates = [];
+
+    /**
+     * 1つの図形が複数の筋を兼ねる場合の対応。下地の絵は三角筋を前部・中部・後部に
+     * 描き分けていないので、肩の図形は3つのうち最も疲労している状態で塗る。
+     * （描き分けが無いのに3色を塗り分けたふりはしない。内訳は下の一覧で読める）
+     */
+    var SHAPE_MUSCLES = {
+      front_delt: ["front_delt", "side_delt"],
+      rear_delt: ["rear_delt", "side_delt"]
+    };
+    var STATUS_RANK = { high: 0, moderate: 1, light: 2, recovered: 3, untouched: 4 };
+
+    function renderBody(side) {
+      var v = VIEW[side];
+      var byId = {};
+      muscleStates.forEach(function (m) { byId[m.id] = m; });
+      var groups = Object.keys(SHAPES[side]).map(function (k) {
+        // その図形が受け持つ筋のうち、いちばん重い状態を採用する
+        var status = (SHAPE_MUSCLES[k] || [k]).reduce(function (worst, id) {
+          var s = byId[id] ? byId[id].status : "untouched";
+          return STATUS_RANK[s] < STATUS_RANK[worst] ? s : worst;
+        }, "untouched");
+        return '<g class="m ' + status + '" data-m="' + k + '">' + SHAPES[side][k] + "</g>";
+      }).join("");
+      // トレース版のパスは実座標なので平行移動しない（旧・手書き版だけ629ずらす）
+      var shift = SHAPE_ABSOLUTE ? "" : ' transform="translate(' + v.offset + ',0)"';
+      return '<svg viewBox="' + v.box + '" role="img" aria-label="' + v.label + 'の疲労状況">' +
+        // 縁を数pxだけぼかす。ベタ塗りの硬い境界が「貼り付けた感」の主因なので、
+        // 下地の筋線維に色が馴染むところまで落とす。
+        '<filter id="feather-' + side + '" x="-10%" y="-10%" width="120%" height="120%">' +
+          '<feGaussianBlur stdDeviation="2.5"/>' +
+        "</filter>" +
+        '<image href="' + BODY_IMG + '" x="0" y="0" width="1289" height="816"/>' +
+        '<g filter="url(#feather-' + side + ')"' + shift + ">" + groups + "</g></svg>";
+    }
+
+    function renderMuscleList() {
+      var wrap = $("mus-list");
+      wrap.innerHTML = "";
+      // 疲労が強い順 → 回復済み → 未使用の順に並べる（見るべきものが上に来る）
+      var order = { high: 0, moderate: 1, light: 2, recovered: 3, untouched: 4 };
+      [...muscleStates]
+        .sort(function (a, b) {
+          return (order[a.status] - order[b.status]) || (b.fatigue - a.fatigue);
+        })
+        .forEach(function (m) {
+          var meta = m.status === "untouched"
+            ? "この期間は未使用"
+            : (m.daysUntilRecovered > 0
+              ? STATUS_JA[m.status] + "・あと" + m.daysUntilRecovered + "日"
+              : STATUS_JA[m.status]);
+          var row = document.createElement("div");
+          row.className = "card mus-row";
+          row.innerHTML =
+            '<span class="mus-dot" style="background:' + STATUS_COLOR[m.status] + '"></span>' +
+            '<span class="mus-name">' + m.label + "</span>" +
+            '<span class="mus-meta">' + meta + "</span>";
+          wrap.appendChild(row);
+        });
+    }
+
+    function renderSessions(sessions) {
+      var wrap = $("sess-list");
+      wrap.innerHTML = "";
+      if (!sessions || !sessions.length) {
+        wrap.innerHTML = '<p class="hint">まだ記録がありません。</p>';
+        return;
+      }
+      sessions.slice(0, 10).forEach(function (s) {
+        var d = s.date.split("-");
+        var row = document.createElement("div");
+        row.className = "card sess-row";
+        row.innerHTML =
+          '<span class="sess-date num">' + Number(d[1]) + "/" + Number(d[2]) + "</span>" +
+          '<span class="sess-body">' +
+            '<span class="sess-ex">' + s.exercises.join("・") + "</span>" +
+            '<span class="sess-meta num">' + s.sets + "セット ／ " +
+            Math.round(s.volumeKg).toLocaleString("en-US") + "kg</span>" +
+          "</span>";
+        wrap.appendChild(row);
+      });
+    }
+
+    function renderHistoryScreen(sessions) {
+      $("body-front").innerHTML = renderBody("front");
+      $("body-back").innerHTML = renderBody("back");
+      renderMuscleList();
+      renderSessions(sessions);
+    }
+
+    var lastSessions = [];
+
+    $("history-btn").addEventListener("click", async function () {
+      $("history").classList.add("on");
+      renderHistoryScreen(lastSessions);
+      if (!online) {
+        $("history-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
+        return;
+      }
+      try {
+        var data = await api("/liff/history?days=14", { method: "GET" });
+        muscleStates = data.training.muscles || [];
+        lastSessions = data.training.sessions || [];
+        renderHistoryScreen(lastSessions);
+      } catch (_) {
+        toast("読み込めなかった");
+      }
+    });
+    $("history-back").addEventListener("click", function () {
+      $("history").classList.remove("on");
+    });
+
+    // ==========================================================
+    // メニュー編集（T12）
+    //   計画層（weekly_cycle）は手動でしか変わらない、という原則どおり
+    //   ここが唯一の変更口。保存を押すまで CYCLE にも PLAN にも触らない。
+    // ==========================================================
+    var draft = null;   // 編集中のサイクル。CYCLE とは別オブジェクト
+    var draftIdx = 0;
+    var uidSeq = 0;
+
+    /** 種目名やラベルはそのまま innerHTML に載るのでエスケープする。 */
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+      });
+    }
+
+    /** 編集用の複製。行の同一性を保つため uid を振る（同名種目が2つあっても混ざらない）。 */
+    function cloneForEdit(cycle) {
+      return {
+        sessions: cycle.sessions.map(function (s) {
+          return {
+            split_label: s.split_label,
+            exercises: (s.exercises || []).map(function (e) {
+              return { uid: "u" + (++uidSeq), name: e.name, sets: e.sets, reps: e.reps };
+            })
+          };
+        })
+      };
+    }
+
+    function draftSession() { return draft.sessions[draftIdx]; }
+
+    /** 差し替え候補（種目ライブラリ）を一度だけ取りに行く。失敗しても編集自体は続けられる。 */
+    async function ensureCatalog() {
+      if (!online || CATALOG.items.length) return;
+      try {
+        var data = await api("/liff/catalog", { method: "GET" });
+        CATALOG = { parts: data.parts || [], items: data.items || [] };
+        indexCatalog();
+      } catch (_) { /* 候補が無いだけ。並べ替えと削除はできる */ }
+    }
+
+    function openMenu() {
+      draft = CYCLE
+        ? cloneForEdit(CYCLE)
+        : { sessions: [{ split_label: "", exercises: [] }] };
+      draftIdx = CYCLE ? Math.min(sessionIdx, draft.sessions.length - 1) : 0;
+      renderEditor();
+      $("menu").classList.add("on");
+      ensureCatalog();
+    }
+
+    function closeMenu() {
+      $("menu").classList.remove("on");
+      draft = null;
+    }
+
+    function renderEditor() {
+      var segs = $("menu-segs");
+      segs.innerHTML = "";
+      if (draft.sessions.length < 2) {
+        segs.hidden = true;
+      } else {
+        segs.hidden = false;
+        draft.sessions.forEach(function (s, i) {
+          var b = document.createElement("button");
+          b.className = "seg" + (i === draftIdx ? " on" : "");
+          b.textContent = s.split_label || (i + 1) + "回目";
+          b.addEventListener("click", function () {
+            if (i === draftIdx) return;
+            draftIdx = i;
+            renderEditor();
+          });
+          segs.appendChild(b);
+        });
+      }
+      $("menu-label").value = draftSession().split_label;
+      renderEditList();
+    }
+
+    $("menu-label").addEventListener("input", function () {
+      draftSession().split_label = this.value;
+      // セグメントの見出しも追従させる（何回目を編集中か見失わないように）
+      var segs = $("menu-segs").children;
+      if (segs[draftIdx]) segs[draftIdx].textContent = this.value || (draftIdx + 1) + "回目";
+    });
+
+    function renderEditList() {
+      var wrap = $("edit-list");
+      wrap.innerHTML = "";
+      var list = draftSession().exercises;
+      if (!list.length) {
+        wrap.innerHTML = '<p class="hint">種目がありません。下の「種目を追加」から選んでね。</p>';
+        return;
+      }
+      list.forEach(function (e, i) {
+        var cat = catalogByName[e.name];
+        var row = document.createElement("div");
+        row.className = "card ed-row";
+        row.dataset.uid = e.uid;
+        row.innerHTML =
+          '<button class="ed-handle" aria-label="' + esc(e.name) + 'の順番を変える">' +
+            '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">' +
+              '<path d="M3 6h12M3 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+            "</svg>" +
+          "</button>" +
+          '<button class="ed-body">' +
+            '<span class="ed-name">' + esc(e.name) + "</span>" +
+            '<span class="ed-meta num">' + e.sets + "セット × " + esc(e.reps) + "回" +
+              (cat ? " ・ " + esc(cat.part) : "") + "</span>" +
+          "</button>" +
+          '<span class="ed-chev" aria-hidden="true">' +
+            '<svg width="8" height="14" viewBox="0 0 8 14" fill="none">' +
+              '<path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+            "</svg>" +
+          "</span>";
+        row.querySelector(".ed-body").addEventListener("click", function () { openRowActions(i); });
+        var handle = row.querySelector(".ed-handle");
+        handle.addEventListener("pointerdown", function (ev) { startDrag(ev, row, handle); });
+        // ドラッグできない環境（キーボード操作）用。並べ替えを手だけに閉じない。
+        handle.addEventListener("keydown", function (ev) {
+          if (ev.key === "ArrowUp") { ev.preventDefault(); moveExercise(i, i - 1); }
+          if (ev.key === "ArrowDown") { ev.preventDefault(); moveExercise(i, i + 1); }
+        });
+        wrap.appendChild(row);
+      });
+    }
+
+    function moveExercise(from, to) {
+      var list = draftSession().exercises;
+      if (to < 0 || to >= list.length) return;
+      list.splice(to, 0, list.splice(from, 1)[0]);
+      renderEditList();
+      // 動かした行のハンドルにフォーカスを戻す（連続で押せるように）
+      var rows = $("edit-list").children;
+      if (rows[to]) rows[to].querySelector(".ed-handle").focus();
+    }
+
+    /**
+     * ドラッグ並べ替え。掴んだ行を指に追従させ、隣の行の中線を越えた時点で
+     * DOM ごと入れ替える。入れ替えでレイアウトが動くぶんは base で打ち消して
+     * 指の下から行がズレないようにする。
+     */
+    function startDrag(ev, row, handle) {
+      if (ev.button != null && ev.button !== 0) return;
+      ev.preventDefault();
+      var list = $("edit-list");
+      var startY = ev.clientY;
+      var base = 0;
+      row.classList.add("dragging");
+      handle.setPointerCapture(ev.pointerId);
+
+      function apply(y) { row.style.transform = "translateY(" + (y - startY + base) + "px)"; }
+
+      function onMove(e) {
+        apply(e.clientY);
+        var rect = row.getBoundingClientRect();
+        var prev = row.previousElementSibling;
+        var next = row.nextElementSibling;
+        var target = null;
+        if (prev && rect.top < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+          target = function () { list.insertBefore(row, prev); };
+        } else if (next && rect.bottom > next.getBoundingClientRect().bottom - next.offsetHeight / 2) {
+          target = function () { list.insertBefore(next, row); };
+        }
+        if (target) {
+          var before = row.getBoundingClientRect().top;
+          target();
+          base += before - row.getBoundingClientRect().top;
+          apply(e.clientY);
+        }
+      }
+
+      function onUp() {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        row.classList.remove("dragging");
+        row.style.transform = "";
+        // DOM の並びを正として配列を作り直す（添字は動かしている間に古くなる）
+        var order = [].map.call(list.children, function (el) { return el.dataset.uid; });
+        var byUid = {};
+        draftSession().exercises.forEach(function (e) { byUid[e.uid] = e; });
+        draftSession().exercises = order.map(function (u) { return byUid[u]; })
+          .filter(function (e) { return !!e; });
+        renderEditList();
+      }
+
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    }
+
+    // ---------- 行のアクション（差し替え・セット数・削除） ----------
+    function openRowActions(i) {
+      var e = draftSession().exercises[i];
+      $("sheet-inner").innerHTML =
+        '<div class="sheet-title">' + esc(e.name) + "</div>" +
+        '<div class="sheet-sub">' + e.sets + "セット × " + esc(e.reps) + "回</div>" +
+        '<button class="act-btn" data-a="swap">別の種目に差し替える</button>' +
+        '<button class="act-btn" data-a="sets">セット数・回数を変える</button>' +
+        '<button class="act-btn danger" data-a="del">この種目を外す</button>' +
+        '<button class="act-btn" data-a="close">やめる</button>';
+      $("sheet-inner").querySelectorAll(".act-btn").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var a = b.dataset.a;
+          if (a === "close") { closeSheet(); return; }
+          if (a === "del") {
+            draftSession().exercises.splice(i, 1);
+            renderEditList();
+            closeSheet();
+            return;
+          }
+          if (a === "sets") { openSetsSheet(i); return; }
+          if (a === "swap") { openPicker(i); return; }
+        });
+      });
+      openSheet(true);
+    }
+
+    var REPS_PRESETS = ["5-8", "6-10", "8-12", "10-12", "12-15", "15-20"];
+
+    function openSetsSheet(i) {
+      var e = draftSession().exercises[i];
+      function chips(vals, cur, key) {
+        return vals.map(function (v) {
+          return '<button class="chip' + (String(v) === String(cur) ? " on" : "") +
+            '" data-k="' + key + '" data-v="' + esc(v) + '">' + esc(v) + "</button>";
+        }).join("");
+      }
+      function paint() {
+        $("sheet-inner").innerHTML =
+          '<div class="sheet-title">' + esc(e.name) + "</div>" +
+          '<div class="sheet-sub">セット数</div>' +
+          '<div class="chips">' + chips([1, 2, 3, 4, 5, 6], e.sets, "sets") + "</div>" +
+          '<div class="sheet-sub" style="margin-top:16px">1セットの回数</div>' +
+          '<div class="chips">' + chips(REPS_PRESETS, e.reps, "reps") + "</div>" +
+          '<button class="act-btn" data-done="1" style="margin-top:18px">完了</button>';
+        $("sheet-inner").querySelectorAll(".chip").forEach(function (b) {
+          b.addEventListener("click", function () {
+            if (b.dataset.k === "sets") e.sets = Number(b.dataset.v);
+            else e.reps = b.dataset.v;
+            paint();
+            renderEditList();
+          });
+        });
+        $("sheet-inner").querySelector("[data-done]").addEventListener("click", closeSheet);
+      }
+      paint();
+      openSheet(true);
+    }
+
+    /** 種目ピッカー。i を渡すと差し替え、null なら末尾に追加。 */
+    function openPicker(i) {
+      var cur = i == null ? null : draftSession().exercises[i];
+      var part = (cur && catalogByName[cur.name] && catalogByName[cur.name].part) || null;
+      var query = "";
+
+      function matches() {
+        var q = query.trim();
+        return CATALOG.items.filter(function (it) {
+          if (part && it.part !== part) return false;
+          return !q || it.name.indexOf(q) >= 0;
+        });
+      }
+
+      function paint(focusSearch) {
+        var items = matches();
+        var partChips = [{ name: "すべて", v: null }]
+          .concat(CATALOG.parts.map(function (p) { return { name: p, v: p }; }))
+          .map(function (p) {
+            return '<button class="chip' + (p.v === part ? " on" : "") +
+              '" data-p="' + esc(p.v == null ? "" : p.v) + '">' + esc(p.name) + "</button>";
+          }).join("");
+
+        var rows = items.length
+          ? items.map(function (it) {
+            return '<button class="pick-row' + (cur && it.name === cur.name ? " cur" : "") +
+              '" data-n="' + esc(it.name) + '">' +
+              '<span class="pick-name">' + esc(it.name) + "</span>" +
+              '<span class="pick-meta num">' + esc(it.part) + " ・ " + it.targetReps + "回</span>" +
+              "</button>";
+          }).join("")
+          : '<p class="hint">' + (CATALOG.items.length
+            ? "見つかりませんでした。"
+            : "種目ライブラリを読み込めませんでした。通信を確認してね。") + "</p>";
+
+        $("sheet-inner").innerHTML =
+          '<div class="sheet-title">' + (cur ? "差し替える種目" : "追加する種目") + "</div>" +
+          '<div class="sheet-sub">' + (cur ? esc(cur.name) + " と入れ替えます" : "今日のメニューの最後に足します") + "</div>" +
+          '<div class="chips">' + partChips + "</div>" +
+          '<input class="search" id="pick-q" placeholder="種目名で探す" value="' + esc(query) + '" autocomplete="off">' +
+          '<div class="pick-list">' + rows + "</div>" +
+          '<button class="act-btn" data-cancel="1">やめる</button>';
+
+        $("sheet-inner").querySelectorAll("[data-p]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            part = b.dataset.p || null;
+            paint(false);
+          });
+        });
+        var q = $("pick-q");
+        q.addEventListener("input", function () { query = q.value; paint(true); });
+        if (focusSearch) { q.focus(); q.setSelectionRange(query.length, query.length); }
+
+        $("sheet-inner").querySelectorAll("[data-n]").forEach(function (b) {
+          b.addEventListener("click", function () { pick(b.dataset.n); });
+        });
+        $("sheet-inner").querySelector("[data-cancel]").addEventListener("click", closeSheet);
+      }
+
+      function pick(name) {
+        var cat = catalogByName[name];
+        var reps = (cat && cat.targetReps) ? repsPresetFor(cat.targetReps) : "8-12";
+        if (cur) {
+          // セット数は引き継ぎ、回数は新しい種目に合ったものにする
+          cur.name = name;
+          cur.reps = reps;
+        } else {
+          draftSession().exercises.push({
+            uid: "u" + (++uidSeq), name: name, sets: 3, reps: reps
+          });
+        }
+        renderEditList();
+        closeSheet();
+      }
+
+      paint(false);
+      openSheet(true);
+    }
+
+    /** カタログの目標レップに一番近いプリセットを選ぶ（自由入力させない）。 */
+    function repsPresetFor(target) {
+      var best = REPS_PRESETS[0], bestD = Infinity;
+      REPS_PRESETS.forEach(function (p) {
+        var d = Math.abs(parseTargetReps(p) - target);
+        if (d < bestD) { bestD = d; best = p; }
+      });
+      return best;
+    }
+
+    // ---------- 保存 ----------
+    function toPayload() {
+      return {
+        frequency: draft.sessions.length,
+        sessions: draft.sessions.map(function (s, i) {
+          return {
+            session_number: i + 1,
+            split_label: s.split_label.trim(),
+            exercises: s.exercises.map(function (e) {
+              return { name: e.name, sets: e.sets, reps: e.reps };
+            })
+          };
+        })
+      };
+    }
+
+    async function saveMenu() {
+      var bad = draft.sessions.findIndex(function (s) {
+        return !s.split_label.trim() || s.exercises.length === 0;
+      });
+      if (bad >= 0) {
+        draftIdx = bad;
+        renderEditor();
+        toast(draft.sessions[bad].split_label.trim()
+          ? "種目が1つも無い日があるよ"
+          : "この日の名前を入れてね");
+        return;
+      }
+
+      var payload = toPayload();
+      if (!online) {
+        // デモでは保存先が無い。見た目だけ更新して、保存された気にさせない。
+        CYCLE = payload;
+        applySession(draftIdx);
+        closeMenu();
+        toast("デモなので保存はされません");
+        return;
+      }
+
+      $("menu-save").disabled = true;
+      try {
+        var res = await api("/liff/plan", {
+          method: "POST",
+          body: JSON.stringify({ weekly_cycle: payload })
+        });
+        CYCLE = res.weekly_cycle || payload;
+        applySession(draftIdx);
+        closeMenu();
+        toast("メニューを更新しました");
+      } catch (_) {
+        toast("保存できなかった。通信を確認してね");
+      } finally {
+        $("menu-save").disabled = false;
+      }
+    }
+
+    $("menu-btn").addEventListener("click", openMenu);
+    $("menu-cancel").addEventListener("click", closeMenu);
+    $("menu-save").addEventListener("click", saveMenu);
+    $("add-ex").addEventListener("click", function () { openPicker(null); });
+
+    // ==========================================================
     // シート・トースト
     // ==========================================================
-    function openSheet() {
+    /**
+     * dismissable=true のときだけ、外側タップ・Escape で閉じられる。
+     * RIR（あと何回できそう）は答えてもらわないと記録が欠けるので閉じさせない。
+     */
+    var sheetDismissable = false;
+    function openSheet(dismissable) {
+      sheetDismissable = !!dismissable;
       clearTimeout(sheetClearTimer);
       $("sheet").classList.add("on");
       $("scrim").classList.add("on");
     }
+
+    $("scrim").addEventListener("click", function () {
+      if (sheetDismissable) closeSheet();
+    });
 
     /**
      * シートを閉じる。走っている休憩タイマーを必ず止め、閉じ切ってから中身を破棄する。
@@ -1033,7 +2037,12 @@
     }
 
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeSheet();
+      if (e.key !== "Escape") return;
+      if ($("sheet").classList.contains("on")) {
+        if (sheetDismissable) closeSheet();
+        return;
+      }
+      if ($("menu").classList.contains("on")) closeMenu();
     });
 
     // ------------------------------------------------------------
@@ -1043,13 +2052,14 @@
       // 起動時は履歴なし（全種目「初回」）。読み込みが終わるまで、
       // 実在しない「前回の重量」を一瞬でも見せないため。
       $("home-hint").textContent = "読み込み中…";
+      renderHeader();
       renderHome();
 
       online = await connect();
 
       if (!online) {
         seedDemo();
-        renderHome();
+        applySession(storedSessionIdx());
         $("home-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
         return;
       }
@@ -1066,9 +2076,15 @@
             lastRir: p.last_rir ?? null
           };
         });
-        renderHome();
-        $("home-hint").innerHTML =
-          "セットごとに重量と回数を記録します。<br>次の重量は記録から自動で決まります。";
+
+        // 刻み(stepKg)はカタログが持っているので、メニューより先に取り込む
+        await ensureCatalog();
+        CYCLE = normalizeCycle(data.training.weeklyCycle);
+        applySession(storedSessionIdx());
+
+        $("home-hint").innerHTML = CYCLE
+          ? "セットごとに重量と回数を記録します。<br>次の重量は記録から自動で決まります。"
+          : "メニューがまだありません。「編集」から作るか、LINEでメニューを作ってね。";
       } catch (_) {
         // 失敗してもデモには戻さない
         $("home-hint").textContent = "記録を読み込めませんでした。通信を確認して開き直してね。";
