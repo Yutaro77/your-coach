@@ -911,6 +911,97 @@
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+  /* ---------------------------------------------------------------
+     History（T11）
+  --------------------------------------------------------------- */
+  .pill {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--blue) 12%, transparent);
+    color: var(--blue);
+  }
+  .pill:active { opacity: 0.6; }
+
+  /* 日付見出しは折り返さない。内訳（右）は長くなるので下へ回り込ませる */
+  #day-title { white-space: nowrap; }
+  #day-meta { text-align: right; }
+
+  .streak-card { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
+  .streak-n { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .streak-u { font-size: 14px; font-weight: 600; color: var(--label-2); margin-left: 3px; }
+  .streak-t { flex: 1; font-size: 13px; color: var(--label-2); line-height: 1.45; }
+
+  .heat-card, .bars-card, .streak-card { padding: 14px 12px 12px; flex: none; }
+  .streak-card { padding: 16px 18px; }
+  .heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .heat-wd { font-size: 10px; color: var(--label-3); text-align: center; }
+  .heat-box {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: var(--track);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--label-2);
+    transition: transform 0.16s var(--ease);
+  }
+  .heat-box:active { transform: scale(0.92); }
+  /* 記録した枠の数で濃くなる。0でも「沈黙」と「食べてないと申告」は別物なので、
+     申告した日だけ枠線で示す（3値を色の濃淡に潰さない）。 */
+  .heat-box.lv1 { background: color-mix(in srgb, var(--green) 26%, transparent); }
+  .heat-box.lv2 { background: color-mix(in srgb, var(--green) 52%, transparent); }
+  .heat-box.lv3 { background: color-mix(in srgb, var(--green) 78%, transparent); color: #fff; }
+  .heat-box.lv4 { background: var(--green); color: #fff; }
+  .heat-box.skipped { box-shadow: inset 0 0 0 1.5px var(--label-3); }
+  .heat-box.sel { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .heat-legend {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding-top: 10px; font-size: 11px; color: var(--label-3);
+  }
+  .heat-legend i { width: 11px; height: 11px; border-radius: 3px; display: block; }
+
+  /* 棒と目標ラインの高さを同じ土俵で計算するため、日付ラベルは目盛り領域の外に置く */
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 112px; position: relative; }
+  .bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+  .bar-fill { width: 100%; border-radius: 4px 4px 2px 2px; background: var(--blue); min-height: 2px; }
+  .bar-fill.over { background: var(--orange); }
+  /* 記録が無い日は棒を描かない。0kcal（＝何も食べていない）と読めてしまうため。 */
+  .bar-none { width: 100%; height: 2px; border-radius: 2px; background: var(--track); }
+  .bar-xs { display: flex; gap: 4px; padding-top: 5px; }
+  .bar-x { flex: 1; font-size: 9px; color: var(--label-3); text-align: center; }
+  .goal-line {
+    position: absolute; left: 0; right: 0;
+    border-top: 1px dashed var(--label-3);
+    pointer-events: none;
+  }
+  .goal-tag {
+    position: absolute; right: 0; transform: translateY(-100%);
+    font-size: 9px; color: var(--label-3); background: var(--card); padding: 0 3px;
+  }
+
+  .daylog { display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .dl-row { display: flex; align-items: center; gap: 11px; padding: 11px 13px; }
+  .dl-slot { flex: none; width: 46px; font-size: 12px; font-weight: 700; color: var(--label-2); }
+  .dl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .dl-items {
+    font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dl-macro { font-size: 11px; color: var(--label-2); margin-top: 1px; }
+  .dl-kcal { flex: none; font-size: 13px; font-weight: 700; }
+  .dl-row.muted .dl-items { color: var(--label-3); font-weight: 500; }
+
+  /* flex:none が無いと、縦フレックスの画面内で潰されて高さ0になる */
+  .totrow { display: flex; gap: 1px; background: var(--separator); border-radius: 14px; overflow: hidden; flex: none; }
+  .totcell { flex: 1; background: var(--card); padding: 11px 4px; text-align: center; }
+  .totcell .k { font-size: 10px; color: var(--label-2); font-weight: 600; }
+  .totcell .v { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
@@ -926,7 +1017,7 @@
       <h1>今日</h1>
       <p class="date" id="today-date">7月20日 月曜日</p>
     </div>
-    <button class="avatar" aria-label="プロフィール">Y</button>
+    <button class="pill" id="history-btn">履歴</button>
   </header>
 
   <div class="scroll" id="scroll">
@@ -1121,6 +1212,56 @@
       <span style="width:62px"></span>
     </div>
     <div class="screen-body" id="screen-body"></div>
+  </section>
+
+  <!-- ============ History screen（T11） ============ -->
+  <section class="screen" id="history" role="dialog" aria-label="記録の履歴">
+    <div class="screen-nav">
+      <button class="nav-btn" id="history-back">閉じる</button>
+      <span class="nav-title">記録の履歴</span>
+      <span style="width:44px"></span>
+    </div>
+    <div class="screen-body">
+      <section class="card streak-card">
+        <div><span class="streak-n num" id="streak-n">0</span><span class="streak-u">日</span></div>
+        <p class="streak-t" id="streak-t">連続で記録しています。</p>
+      </section>
+
+      <div class="sec-head">
+        <h2 class="sec-title">この2週間</h2>
+        <span class="sec-meta" id="heat-meta"></span>
+      </div>
+      <section class="card heat-card">
+        <div class="heat" id="heat"></div>
+        <div class="heat-legend">
+          <span>少ない</span>
+          <i style="background:var(--track)"></i>
+          <i style="background:color-mix(in srgb, var(--green) 26%, transparent)"></i>
+          <i style="background:color-mix(in srgb, var(--green) 52%, transparent)"></i>
+          <i style="background:color-mix(in srgb, var(--green) 78%, transparent)"></i>
+          <i style="background:var(--green)"></i>
+          <span>全部</span>
+        </div>
+      </section>
+
+      <div class="sec-head">
+        <h2 class="sec-title">カロリー</h2>
+        <span class="sec-meta" id="bars-meta"></span>
+      </div>
+      <section class="card bars-card">
+        <div class="bars" id="bars"></div>
+        <div class="bar-xs" id="bar-xs"></div>
+      </section>
+
+      <div class="sec-head">
+        <h2 class="sec-title" id="day-title">—</h2>
+        <span class="sec-meta" id="day-meta"></span>
+      </div>
+      <div class="totrow" id="day-tot"></div>
+      <div class="daylog" id="daylog"></div>
+
+      <p class="hint" id="history-hint"></p>
+    </div>
   </section>
 
   <div class="toast" id="toast">
@@ -1770,6 +1911,232 @@
         if (t.proteinG) GOAL.p = t.proteinG;
       }
     }
+
+    // ------------------------------------------------------------
+    // 履歴（T11）
+    //   記録＝LINE / 振り返り＝LIFF の「振り返り」側。ここでは記録させない。
+    //   3値（記録済み・未記録・食べてない申告）を最後まで混ぜないのが要点。
+    // ------------------------------------------------------------
+    var HIST = null;   // { perDay, days:[{date,slots,totals,recorded,unrecorded,skipped}], streak }
+    var histSel = -1;  // 選択中の日（days の添字）
+
+    var WD = ["日", "月", "火", "水", "木", "金", "土"];
+    function dateParts(s) {
+      var a = s.split("-").map(Number);
+      return { y: a[0], m: a[1], d: a[2], wd: new Date(a[0], a[1] - 1, a[2]).getDay() };
+    }
+
+    async function openHistory() {
+      $("history").classList.add("on");
+      if (HIST) renderHistory();
+      else $("history-hint").textContent = "読み込み中…";
+
+      if (!online) {
+        HIST = demoHistory();
+        renderHistory();
+        $("history-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
+        return;
+      }
+      try {
+        var data = await api("/liff/history?days=14", { method: "GET" });
+        HIST = data.meals;
+        histSel = -1;
+        renderHistory();
+        $("history-hint").textContent =
+          "平均は記録がある日だけで計算しています。記録が無い日は0kcalとして扱いません。";
+      } catch (_) {
+        $("history-hint").textContent = "履歴を読み込めませんでした。通信を確認して開き直してね。";
+        toast("読み込めなかった");
+      }
+    }
+
+    function renderHistory() {
+      var days = HIST.days || [];
+      if (histSel < 0 || histSel >= days.length) histSel = days.length - 1;
+
+      $("streak-n").textContent = HIST.streak || 0;
+      $("streak-t").textContent = (HIST.streak || 0) > 0
+        ? "連続で記録しています。続けるほど提案の精度が上がります。"
+        : "まだ連続記録がありません。1枠でも記録すると始まります。";
+
+      var withRec = days.filter(function (d) { return d.recorded > 0; });
+      $("heat-meta").textContent = withRec.length + " / " + days.length + "日 記録あり";
+
+      renderHeat(days);
+      renderBars(days);
+      selectDay(histSel);
+    }
+
+    function renderHeat(days) {
+      var wrap = $("heat");
+      wrap.innerHTML = "";
+      // 曜日の見出しは先頭7日から作って1行だけ出す（14日は必ず同じ曜日の並びになる）
+      days.slice(0, 7).forEach(function (d) {
+        var h = document.createElement("div");
+        h.className = "heat-wd";
+        h.textContent = WD[dateParts(d.date).wd];
+        wrap.appendChild(h);
+      });
+      days.forEach(function (d, i) {
+        var p = dateParts(d.date);
+        var ratio = HIST.perDay ? d.recorded / HIST.perDay : 0;
+        var lv = d.recorded === 0 ? 0 : Math.min(4, Math.ceil(ratio * 4));
+        var box = document.createElement("button");
+        box.className = "heat-box" + (lv ? " lv" + lv : "") +
+          (d.recorded === 0 && d.skipped > 0 ? " skipped" : "") +
+          (i === histSel ? " sel" : "");
+        box.textContent = p.d;
+        box.setAttribute("aria-label",
+          (p.m + "月" + p.d + "日 ") +
+          (d.recorded > 0 ? d.recorded + "枠 記録" : d.skipped > 0 ? "食べていない申告" : "記録なし"));
+        box.addEventListener("click", function () { histSel = i; renderHistory(); });
+        wrap.appendChild(box);
+      });
+    }
+
+    function renderBars(days) {
+      var wrap = $("bars");
+      var xs = $("bar-xs");
+      wrap.innerHTML = "";
+      xs.innerHTML = "";
+      var goal = GOAL.kcal || 2000;
+      var maxKcal = days.reduce(function (a, d) { return Math.max(a, d.totals.kcal); }, 0);
+      var top = Math.max(goal, maxKcal) * 1.12;
+
+      days.forEach(function (d, i) {
+        var p = dateParts(d.date);
+        var col = document.createElement("div");
+        col.className = "bar-col";
+        if (d.recorded > 0) {
+          var bar = document.createElement("div");
+          bar.className = "bar-fill" + (d.totals.kcal > goal ? " over" : "");
+          bar.style.height = Math.max(2, (d.totals.kcal / top) * 100) + "%";
+          bar.title = d.totals.kcal + " kcal";
+          col.appendChild(bar);
+        } else {
+          // 記録が無い日は棒を出さない（0kcalに見せない）
+          var none = document.createElement("div");
+          none.className = "bar-none";
+          col.appendChild(none);
+        }
+        col.addEventListener("click", function () { histSel = i; renderHistory(); });
+        wrap.appendChild(col);
+
+        var x = document.createElement("div");
+        x.className = "bar-x num";
+        x.textContent = i % 2 === 0 ? p.d : "";
+        xs.appendChild(x);
+      });
+
+      // 目標ライン。棒と同じ高さ基準（.bars の高さ）で置く
+      var line = document.createElement("div");
+      line.className = "goal-line";
+      line.style.bottom = (goal / top) * 100 + "%";
+      line.innerHTML = '<span class="goal-tag num">目標 ' + goal.toLocaleString("en-US") + "</span>";
+      wrap.appendChild(line);
+    }
+
+    function selectDay(i) {
+      var d = HIST.days[i];
+      if (!d) return;
+      var p = dateParts(d.date);
+      $("day-title").textContent = p.m + "月" + p.d + "日（" + WD[p.wd] + "）";
+      var parts = [];
+      if (d.recorded > 0) parts.push(d.recorded + "枠 記録");
+      if (d.skipped > 0) parts.push(d.skipped + "枠 食べてない");
+      if (d.unrecorded > 0) parts.push(d.unrecorded + "枠 未記録");
+      $("day-meta").textContent = parts.join(" ・ ");
+
+      // 記録が1枠も無い日に 0kcal と出すと「何も食べていない」と読めてしまう。
+      // 分からないものは分からないまま「—」で出す。
+      var t = d.totals;
+      var has = d.recorded > 0;
+      $("day-tot").innerHTML = [
+        ["kcal", has ? t.kcal.toLocaleString("en-US") : "—"],
+        ["P", has ? t.p + "g" : "—"],
+        ["C", has ? t.c + "g" : "—"],
+        ["F", has ? t.f + "g" : "—"]
+      ].map(function (r) {
+        return '<div class="totcell"><div class="k">' + r[0] + '</div><div class="v num">' + r[1] + "</div></div>";
+      }).join("");
+
+      var wrap = $("daylog");
+      wrap.innerHTML = "";
+      d.slots.forEach(function (sl) {
+        var row = document.createElement("div");
+        var muted = sl.status !== "recorded";
+        row.className = "card dl-row" + (muted ? " muted" : "");
+        var label = sl.status === "recorded"
+          ? (sl.items || "記録済み")
+          : (sl.status === "skipped" ? "食べていない" : "未記録");
+        row.innerHTML =
+          '<span class="dl-slot">' + sl.slot + "食目</span>" +
+          '<span class="dl-body">' +
+            '<span class="dl-items">' + esc(label) + "</span>" +
+            (sl.status === "recorded"
+              ? '<span class="dl-macro num">P ' + sl.p + " ・ C " + sl.c + " ・ F " + sl.f + "</span>"
+              : "") +
+          "</span>" +
+          (sl.status === "recorded"
+            ? '<span class="dl-kcal num">' + sl.kcal.toLocaleString("en-US") + "</span>"
+            : "");
+        wrap.appendChild(row);
+      });
+    }
+
+    /** 記録内容はユーザー入力・AI出力なので、そのまま innerHTML に載せない。 */
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+      });
+    }
+
+    /** LINE外プレビュー用のダミー履歴。実データと取り違えないよう画面にも明示する。 */
+    function demoHistory() {
+      var per = MEALS_PER_DAY || 4;
+      var days = [];
+      var base = new Date();
+      for (var i = 13; i >= 0; i--) {
+        var dt = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i);
+        var date = dt.getFullYear() + "-" +
+          String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+        // 3日に1度は記録が抜け、たまに「食べてない」申告がある、くらいの散らばり
+        var rec = i === 4 ? 0 : Math.max(1, per - (i % 3));
+        var skip = i === 4 ? 1 : (i % 5 === 0 ? 1 : 0);
+        var slots = [];
+        for (var s = 1; s <= per; s++) {
+          if (s <= rec) {
+            slots.push({
+              slot: s, status: "recorded",
+              items: ["鶏むねと白米", "オートミールとプロテイン", "サーモン丼", "卵かけご飯と味噌汁"][(s + i) % 4],
+              kcal: 420 + ((i * 37 + s * 53) % 260), p: 28 + (s * 3 + i) % 14,
+              c: 45 + (i * 5 + s) % 30, f: 9 + (i + s) % 8, grams: null
+            });
+          } else {
+            slots.push({
+              slot: s, status: s === per && skip ? "skipped" : "unrecorded",
+              items: null, kcal: 0, p: 0, c: 0, f: 0, grams: null
+            });
+          }
+        }
+        var tot = slots.reduce(function (a, sl) {
+          if (sl.status !== "recorded") return a;
+          return { kcal: a.kcal + sl.kcal, p: a.p + sl.p, c: a.c + sl.c, f: a.f + sl.f };
+        }, { kcal: 0, p: 0, c: 0, f: 0 });
+        days.push({
+          date: date, slots: slots, totals: tot,
+          recorded: rec,
+          skipped: slots.filter(function (x) { return x.status === "skipped"; }).length,
+          unrecorded: slots.filter(function (x) { return x.status === "unrecorded"; }).length
+        });
+      }
+      return { perDay: per, days: days, streak: 4 };
+    }
+
+    $("history-btn").addEventListener("click", openHistory);
+    $("history-back").addEventListener("click", function () {
+      $("history").classList.remove("on");
+    });
 
     // ------------------------------------------------------------
     // Boot
