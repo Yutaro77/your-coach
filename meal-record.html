@@ -376,6 +376,15 @@
     text-wrap: balance;
   }
   .ai-text b { color: var(--blue); font-weight: 700; }
+  .ai-note {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--label-2);
+    line-height: 1.45;
+    letter-spacing: 0;
+  }
 
   /* ---------------------------------------------------------------
      Timeline
@@ -1321,6 +1330,8 @@
     // Model
     // ------------------------------------------------------------
     var GOAL = { kcal: 2300, p: 150, c: 260, f: 65 };
+    /** 週の再配分で目標が動いたときの説明（サーバが文にしたものをそのまま出す）。 */
+    var ADJUST_NOTE = "";
 
     // 1日の食事枠は「n食目」。プランで決めた食数だけ枠を用意する。
     // 各枠は3状態を持つ:
@@ -1354,6 +1365,9 @@
         log[pair[0]].status = "recorded";
         log[pair[0]].entries.push(pair[1]);
       });
+      // 週の再配分（T5）が出ている状態もプレビューできるようにしておく
+      GOAL.kcal = 2120;
+      ADJUST_NOTE = "今週はここまで900kcal多め。残り5日で均すから、今日は2120kcal（-180kcal）にしよう。";
     }
 
     var LIBRARY = {
@@ -1501,7 +1515,9 @@
       } else {
         msg = "今日の目標はすべて達成です。";
       }
-      $("ai-text").innerHTML = msg;
+      // 週の再配分があった日は、その理由も併記する（なぜ目標が動いたのか隠さない）
+      $("ai-text").innerHTML = msg +
+        (ADJUST_NOTE ? '<span class="ai-note">' + esc(ADJUST_NOTE) + "</span>" : "");
     }
 
     // ------------------------------------------------------------
@@ -1907,8 +1923,11 @@
 
       var t = data.meals.targets;
       if (t && t.kcalRest != null) {
-        GOAL.kcal = t.kcalTraining || t.kcalRest;
+        // kcalToday は週の過不足を反映済みの確定値（T5）。あればそれを目標にする。
+        // 画面とAIで違う数字を出さないよう、計算は必ずサーバ側の値をそのまま使う。
+        GOAL.kcal = t.kcalToday || t.kcalTraining || t.kcalRest;
         if (t.proteinG) GOAL.p = t.proteinG;
+        ADJUST_NOTE = (t.adjustKcal ? t.adjustNote : "") || "";
       }
     }
 
