@@ -577,6 +577,12 @@
     -webkit-touch-callout: none;
     cursor: grabbing;
   }
+  /* ドラッグ中はスクロールも下スワイプの引っぱりも殺す（LIFFが最小化するのを防ぐ） */
+  body.drag-lock {
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
   .ed-handle {
     flex: none; width: 38px; height: 40px;
     display: grid; place-items: center;
@@ -1891,6 +1897,12 @@
       if (sel && sel.removeAllRanges) sel.removeAllRanges();
       handle.setPointerCapture(ev.pointerId);
 
+      // LIFF は「下方向スワイプ」をウィンドウを閉じるジェスチャーとして拾う。
+      // 行を下へドラッグするとそれが誤発動して最小化されるので、ドラッグ中は
+      // ドキュメント全体の touchmove を止める（passive:false でないと preventDefault が効かない）。
+      function blockTouch(e) { e.preventDefault(); }
+      document.addEventListener("touchmove", blockTouch, { passive: false });
+
       function apply(y) { row.style.transform = "translateY(" + (y - startY + base) + "px)"; }
 
       function onMove(e) {
@@ -1916,6 +1928,7 @@
         handle.removeEventListener("pointermove", onMove);
         handle.removeEventListener("pointerup", onUp);
         handle.removeEventListener("pointercancel", onUp);
+        document.removeEventListener("touchmove", blockTouch, { passive: false });
         row.classList.remove("dragging");
         document.body.classList.remove("drag-lock");
         row.style.transform = "";
