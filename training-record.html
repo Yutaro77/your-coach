@@ -882,6 +882,12 @@
           "authorization": "Bearer " + idToken,
         },
       }, options || {}));
+      // 402 = 課金・無料期間で書き込みが止められている（G）。
+      // 呼び出し側の汎用catchに任せると原因が伝わらないので、ここで理由を知らせる。
+      if (res.status === 402) {
+        toast("無料期間が終わったみたい。LINEのトークから登録してね");
+        throw new Error("subscription_required");
+      }
       if (!res.ok) throw new Error("api " + path + " -> " + res.status);
       return res.json();
     }
