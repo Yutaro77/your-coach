@@ -631,6 +631,9 @@ let currentImageBase64 = null;
 let currentImageType = 'image/jpeg';
 let bodyfatMethod = null;
 let liffUserId = null;
+// サーバは body の user_id を信用せず、IDトークンの sub だけを信用する
+// （body は詐称できるため）。これを送らないと登録は必ず 401 で弾かれる。
+let liffIdToken = null;
 
 // LIFF初期化
 async function initLiff() {
@@ -639,6 +642,7 @@ async function initLiff() {
     if (liff.isLoggedIn()) {
       const profile = await liff.getProfile();
       liffUserId = profile.userId;
+      liffIdToken = liff.getIDToken();
     } else {
       liff.login();
     }
@@ -1123,18 +1127,26 @@ async function submitForm() {
   };
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    // IDトークンが本人確認の唯一の根拠。無いとサーバは 401 を返す。
+    if (liffIdToken) headers['Authorization'] = 'Bearer ' + liffIdToken;
+
     const res = await fetch(SERVER_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify(data)
     });
+
+    // **必ず結果を見る**。ここを見ていなかったため、401でも「登録完了！」を出し、
+    // ユーザーは登録できたと思ったままLINEに何も届かない状態になっていた。
+    if (!res.ok) throw new Error('server ' + res.status);
 
     document.getElementById('loading').classList.remove('active');
     document.getElementById('stepsContainer').style.display = 'none';
     document.getElementById('completeScreen').classList.add('active');
   } catch (e) {
     document.getElementById('loading').classList.remove('active');
-    alert('送信に失敗しました。もう一度試してね。');
+    alert('登録できませんでした。通信環境を確認して、もう一度試してね。\n何度も失敗する場合はLINEのトークで教えてください。');
     document.getElementById('btnNext').style.display = 'block';
   }
 }
