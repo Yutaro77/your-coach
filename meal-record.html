@@ -419,7 +419,8 @@
 
   .fd-picked { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
   .fd-item { display: flex; align-items: center; gap: 10px; padding: 10px 13px; }
-  .fd-item-n { flex: 1; font-size: 14px; font-weight: 600; }
+  .fd-item-n { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; text-align: left; background: none; border: 0; padding: 0; color: inherit; font-family: inherit; cursor: pointer; }
+  .fd-item-n:active { opacity: 0.55; }
   .fd-item-g { font-size: 12px; color: var(--label-2); }
   .fd-item-k { font-size: 13px; font-weight: 700; width: 58px; text-align: right; }
   .fd-del { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--fill);
@@ -1743,10 +1744,19 @@
     $("scrim").addEventListener("click", function () { setSheet(false); });
     $("sheet-cancel").addEventListener("click", function () { setSheet(false); });
 
-    // 枠をタップ → その枠を指定して記録シートを開く
+    // 枠をタップ → 記録済みで内訳があれば「内訳を編集」、それ以外は記録シート。
     $("timeline").addEventListener("click", function (e) {
       var btn = e.target.closest("[data-slot]");
-      if (btn) setSheet(true, btn.dataset.slot);
+      if (!btn) return;
+      var s = btn.dataset.slot;
+      var parts = (log[s] && log[s].status === "recorded") ? slotParts(s) : null;
+      if (parts && parts.length) {
+        runBuilder(parts.map(function (p) {
+          return { code: p.code, name: p.name || "", grams: p.grams };
+        }), s);
+      } else {
+        setSheet(true, s);
+      }
     });
 
     // ------------------------------------------------------------
@@ -1808,6 +1818,37 @@
       });
 
       finishWrite(s, s + "に記録しました");
+    }
+
+    /** その枠の内訳（素材ごと code/grams）。全記録が素材由来のときだけ返す（写真と混在は不可）。 */
+    function slotParts(s) {
+      var es = (log[s] && log[s].entries) || [];
+      if (!es.length) return null;
+      var all = es.every(function (e) { return e.parts && e.parts.length; });
+      if (!all) return null;
+      return es.reduce(function (a, e) { return a.concat(e.parts); }, []);
+    }
+
+    /** 内訳の編集結果でその枠を「置き換える」（追記しない）。⑪ の保存経路。 */
+    function replaceSlot(s, entry) {
+      var rec = {
+        time: nowHM(),
+        items: entry.name,
+        kcal: Math.round(entry.kcal), p: Math.round(entry.p),
+        c: Math.round(entry.c), f: Math.round(entry.f),
+        grams: Math.round(entry.grams || 0),
+        parts: entry.parts || null,
+        emoji: entry.emoji, tint: entry.tint
+      };
+      log[s].status = "recorded";
+      log[s].entries = [rec];   // 置き換え：古い内訳を残さない
+      var t = slotTotals(s);
+      push({
+        slot: slotNo(s), status: "recorded",
+        items: rec.items, kcal: t.kcal, p: t.p, c: t.c, f: t.f,
+        grams: t.grams, parts: rec.parts, source: "liff-edit"
+      });
+      finishWrite(s, s + "の内訳を更新しました");
     }
 
     /** 「食べていない」の明示的な申告。未記録とは別の状態として保存する。 */
@@ -2162,8 +2203,11 @@
       };
     }
 
-    function runBuilder(preset) {
-      openScreen("素材から記録");
+    // preset: 事前に積む素材（{code,name,grams}）。editSlot: 指定すると「内訳を編集」＝
+    // 追記でなくその枠を置き換える（⑪）。編集時は preset の食品を成分表から引き直して
+    // per-100g 栄養を得る（parts の絶対値からは量変更時に正しく再計算できないため）。
+    function runBuilder(preset, editSlot) {
+      openScreen(editSlot ? "内訳を編集" : "素材から記録");
       var picked = (preset || []).map(function (x) { return { code: x.code, name: x.name, grams: x.grams }; });
       var results = [];
       var sel = null;      // 量を入力中の食品
@@ -2188,6 +2232,19 @@
 
       var byCode = {};   // 追加済みの計算に使う食品データ
 
+      // 編集モード: preset の食品を成分表から引き直して byCode を埋める（量変更に追従させる）
+      if (editSlot && picked.length && online) {
+        var codes = picked.map(function (x) { return x.code; }).filter(Boolean).join(",");
+        api("/liff/foods?codes=" + encodeURIComponent(codes), { method: "GET" })
+          .then(function (data) {
+            (data.items || []).forEach(function (f) { byCode[f.code] = f; });
+            // preset の name はサーバ由来の短縮名で埋めておく（未取得なら code のまま）
+            picked.forEach(function (x) { if (byCode[x.code]) x.name = byCode[x.code].label; });
+            renderPicked();
+          })
+          .catch(function () { /* 引けなくても手で追加・削除はできる */ });
+      }
+
       function totals() {
         return picked.reduce(function (a, x) {
           var f = byCode[x.code];
@@ -2207,9 +2264,19 @@
           var row = document.createElement("div");
           row.className = "card fd-item";
           row.innerHTML =
-            '<span class="fd-item-n">' + esc(x.name) + '<span class="fd-item-g"> ' + x.grams + "g</span></span>" +
+            '<button class="fd-item-n">' + esc(x.name) + '<span class="fd-item-g"> ' + x.grams + "g</span></button>" +
             '<span class="fd-item-k num">' + n.kcal + "</span>" +
             '<button class="fd-del" aria-label="外す">×</button>';
+          // 行をタップ → その素材を量入力に戻す（一旦 picked から抜き、追加で上書き）。
+          // 「消して再追加」より速く1素材の量を直せる＝内訳編集の主目的。
+          row.querySelector(".fd-item-n").addEventListener("click", function () {
+            if (!f) return; // 成分表をまだ引けていない（編集モードの取得前）
+            sel = f;
+            selGrams = x.grams;
+            picked.splice(i, 1);
+            renderQty(); renderPicked();
+            $("fd-qty").scrollIntoView({ block: "nearest", behavior: "smooth" });
+          });
           row.querySelector(".fd-del").addEventListener("click", function () {
             picked.splice(i, 1); renderPicked();
           });
@@ -2317,15 +2384,21 @@
       });
 
       $("b-save").addEventListener("click", function () {
-        if (!picked.length) { toast("素材を追加してね"); return; }
+        if (!picked.length) {
+          toast(editSlot ? "素材が全部無くなってるよ" : "素材を追加してね");
+          return;
+        }
         var t = totals();
-        commit({
+        var entry = {
           name: picked.map(function (x) { return x.name + x.grams + "g"; }).join("・"),
           kcal: t.kcal, p: t.p, c: t.c, f: t.f,
           grams: picked.reduce(function (a, x) { return a + x.grams; }, 0),
           parts: picked.map(function (x) { return { code: x.code, grams: x.grams }; }),
           emoji: "🍽️", tint: ["#DFF3DC", "#93D18C"]
-        });
+        };
+        // 編集はその枠を「置き換える」。新規記録は空き枠へ追記する。
+        if (editSlot) replaceSlot(editSlot, entry);
+        else commit(entry);
       });
 
       search("");        // 最初はよく使う食品を出す
@@ -2406,6 +2479,8 @@
           log[key].entries = [{
             time: "", items: sl.items || "記録済み",
             kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f,
+            // 内訳（素材ごとの code/grams）。これがあると枠タップで編集画面を開ける
+            parts: sl.parts || null,
             emoji: "🍽️", tint: ["#ECECEF", "#C7C7CC"]
           }];
         }
