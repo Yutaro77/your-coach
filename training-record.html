@@ -501,13 +501,26 @@
   .mus-meta { font-size: 12px; color: var(--label-2); }
 
   .sess-row { display: flex; align-items: center; gap: 12px; padding: 12px 13px; }
-  .sess-date { flex: none; width: 44px; font-size: 12px; font-weight: 700; color: var(--label-2); }
+  .sess-date { flex: none; width: 44px; font-size: 14px; font-weight: 700; color: var(--label); line-height: 1.2; text-align: center; }
+  .sess-wd { font-size: 10px; font-weight: 600; color: var(--label-3); }
   .sess-body { flex: 1; min-width: 0; }
   .sess-ex {
     font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .sess-meta { font-size: 11px; color: var(--label-2); margin-top: 1px; }
+
+  #trend-list { display: flex; flex-direction: column; gap: 8px; }
+  .trend-card { padding: 12px 14px 10px; }
+  .trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .trend-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .trend-now { font-size: 15px; font-weight: 700; color: var(--label); }
+  .trend-delta { font-size: 12px; font-weight: 700; margin-left: 2px; }
+  .trend-delta.up { color: var(--green); }
+  .trend-delta.down { color: var(--orange); }
+  .trend-delta.keep { color: var(--label-3); }
+  .spark { display: block; margin: 6px 0 2px; overflow: visible; }
+  .trend-foot { font-size: 11px; color: var(--label-3); }
 
   /* ---------------- メニュー編集（T12） ---------------- */
   .sec-edit { font-size: 15px; font-weight: 600; color: var(--blue); }
@@ -556,6 +569,13 @@
     background: var(--card-elevated);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18), 0 0 0 0.5px var(--separator);
     transform-origin: center;
+  }
+  /* ドラッグ中は選択・長押しメニューを完全に殺す（文字が反転してつまみにくいため） */
+  body.drag-lock, body.drag-lock * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    cursor: grabbing;
   }
   .ed-handle {
     flex: none; width: 38px; height: 40px;
@@ -785,6 +805,9 @@
       <div class="sec-head"><h2 class="sec-title">部位ごとの状態</h2></div>
       <div class="mus-list" id="mus-list"></div>
 
+      <div class="sec-head"><h2 class="sec-title">成長（推定1RM）</h2></div>
+      <div id="trend-list"></div>
+
       <div class="sec-head"><h2 class="sec-title">最近のトレーニング</h2></div>
       <div class="mus-list" id="sess-list"></div>
 
@@ -834,6 +857,8 @@
     "use strict";
 
     function $(id) { return document.getElementById(id); }
+
+    var WD = ["日", "月", "火", "水", "木", "金", "土"];
 
     // ------------------------------------------------------------
     // 接続設定（LIFF に載せるときはここだけ埋める）
@@ -1049,6 +1074,21 @@
         { date: "2026-07-20", exercises: ["ベンチプレス", "インクラインダンベルプレス", "ケーブルフライ"], sets: 9, reps: 96, volumeKg: 2790 },
         { date: "2026-07-17", exercises: ["スクワット", "レッグプレス"], sets: 6, reps: 60, volumeKg: 3300 }
       ];
+      lastTrends = [
+        { exercise: "ベンチプレス", points: [
+          { date: "2026-06-22", e1rmKg: 78, topWeightKg: 62.5 },
+          { date: "2026-06-29", e1rmKg: 80, topWeightKg: 65 },
+          { date: "2026-07-06", e1rmKg: 81.5, topWeightKg: 65 },
+          { date: "2026-07-13", e1rmKg: 84, topWeightKg: 67.5 },
+          { date: "2026-07-20", e1rmKg: 86, topWeightKg: 70 }
+        ] },
+        { exercise: "スクワット", points: [
+          { date: "2026-06-24", e1rmKg: 100, topWeightKg: 80 },
+          { date: "2026-07-03", e1rmKg: 104, topWeightKg: 85 },
+          { date: "2026-07-10", e1rmKg: 104, topWeightKg: 85 },
+          { date: "2026-07-17", e1rmKg: 108, topWeightKg: 90 }
+        ] }
+      ];
     }
 
     var logs = []; // { exercise, setNo, weight, reps, rir }
@@ -1247,12 +1287,42 @@
     $("r-down").addEventListener("click", function () { reps = Math.max(1, reps - 1); paint(); });
 
     $("start-btn").addEventListener("click", openSession);
-    $("abort").addEventListener("click", function () {
+
+    /** 記録を残さずセッションを閉じる（破棄）。 */
+    function discardSession() {
       clearInterval(tickTimer);
+      clearInterval(restTimer);
       tickTimer = null;
       closeSheet(); // 休憩タイマーもここで止まる
       $("session").classList.remove("on");
       renderHome();
+    }
+
+    // 途中で終えるとき。中止＝破棄しかないと「ここまでを記録して終わる」ができない。
+    // 記録済みのセットがあれば「記録して終わる」を出し、finish() で保存する。
+    $("abort").addEventListener("click", function () {
+      var hasLogs = logs.length > 0;
+      $("sheet-inner").innerHTML =
+        '<div class="sheet-title">トレーニングを終える</div>' +
+        '<div class="sheet-sub">' +
+          (hasLogs
+            ? "ここまで" + logs.length + "セット記録しています。"
+            : "まだ記録がありません。") +
+        "</div>" +
+        (hasLogs
+          ? '<button class="act-btn" data-a="finish">ここまでを記録して終わる</button>'
+          : "") +
+        '<button class="act-btn danger" data-a="discard">記録せずに終わる</button>' +
+        '<button class="act-btn" data-a="resume">続ける</button>';
+      $("sheet-inner").querySelectorAll(".act-btn").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var a = b.dataset.a;
+          if (a === "finish") { closeSheet(); finish(); }
+          else if (a === "discard") { discardSession(); }
+          else { closeSheet(); }
+        });
+      });
+      openSheet();
     });
 
     // ---- セット完了 → RIR を聞く ----
@@ -1551,10 +1621,12 @@
       }
       sessions.slice(0, 10).forEach(function (s) {
         var d = s.date.split("-");
+        var wd = WD[new Date(Number(d[0]), Number(d[1]) - 1, Number(d[2])).getDay()];
         var row = document.createElement("div");
         row.className = "card sess-row";
         row.innerHTML =
-          '<span class="sess-date num">' + Number(d[1]) + "/" + Number(d[2]) + "</span>" +
+          '<span class="sess-date num">' + Number(d[1]) + "/" + Number(d[2]) +
+            '<br><span class="sess-wd">' + wd + "</span></span>" +
           '<span class="sess-body">' +
             '<span class="sess-ex">' + s.exercises.join("・") + "</span>" +
             '<span class="sess-meta num">' + s.sets + "セット ／ " +
@@ -1568,10 +1640,76 @@
       $("body-front").innerHTML = renderBody("front");
       $("body-back").innerHTML = renderBody("back");
       renderMuscleList();
+      renderTrends(lastTrends);
       renderSessions(sessions);
     }
 
+    /**
+     * 成長の可視化。種目ごとに推定1RMの折れ線（スパークライン）と、期間内の
+     * 増減を出す。推定1RMはサーバ側で計算済み（e1rmSeries）。ここでは描くだけで、
+     * 数値を作らない（実績が無い種目は勝手な線を引かない）。
+     */
+    function renderTrends(trends) {
+      var wrap = $("trend-list");
+      wrap.innerHTML = "";
+      if (!trends || !trends.length) {
+        wrap.innerHTML = '<p class="hint">記録が増えると、種目ごとの伸びをここに表示します。</p>';
+        return;
+      }
+      trends.forEach(function (t) {
+        var pts = (t.points || []).filter(function (p) { return p.e1rmKg > 0; });
+        if (!pts.length) return;
+        var vals = pts.map(function (p) { return p.e1rmKg; });
+        var first = vals[0], last = vals[vals.length - 1];
+        var delta = Math.round((last - first) * 10) / 10;
+        var cls = delta > 0 ? "up" : (delta < 0 ? "down" : "keep");
+        var mark = delta > 0 ? "+" : "";
+        var d = pts[pts.length - 1].date.split("-");
+
+        var card = document.createElement("div");
+        card.className = "card trend-card";
+        card.innerHTML =
+          '<div class="trend-head">' +
+            '<span class="trend-name">' + esc(t.exercise) + "</span>" +
+            '<span class="trend-now num">' + fmtKg(last) + "kg" +
+              (pts.length > 1
+                ? ' <span class="trend-delta ' + cls + '">' + mark + fmtKg(delta) + "kg</span>"
+                : "") +
+            "</span>" +
+          "</div>" +
+          sparkline(vals) +
+          '<div class="trend-foot num">' + pts.length + "回 ・ 最終 " +
+            Number(d[1]) + "/" + Number(d[2]) + "</div>";
+        wrap.appendChild(card);
+      });
+      if (!wrap.children.length) {
+        wrap.innerHTML = '<p class="hint">記録が増えると、種目ごとの伸びをここに表示します。</p>';
+      }
+    }
+
+    /** 値の配列を折れ線SVGにする。点が1つなら横線。座標は0..100の相対で描く。 */
+    function sparkline(vals) {
+      var w = 300, h = 64, pad = 8;
+      var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+      var span = max - min || 1;
+      var n = vals.length;
+      function x(i) { return pad + (n === 1 ? (w - pad * 2) / 2 : (i * (w - pad * 2)) / (n - 1)); }
+      function y(v) { return pad + (h - pad * 2) * (1 - (v - min) / span); }
+      var dline = vals.map(function (v, i) { return (i ? "L" : "M") + x(i) + " " + y(v); }).join(" ");
+      var area = dline + " L" + x(n - 1) + " " + (h - pad) + " L" + x(0) + " " + (h - pad) + " Z";
+      var dots = vals.map(function (v, i) {
+        return '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="2.5" fill="var(--blue)"/>';
+      }).join("");
+      return '<svg class="spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none" ' +
+        'width="100%" height="' + h + '" aria-hidden="true">' +
+        '<path d="' + area + '" fill="var(--blue)" opacity="0.10"/>' +
+        '<path d="' + dline + '" fill="none" stroke="var(--blue)" stroke-width="2" ' +
+          'stroke-linecap="round" stroke-linejoin="round"/>' + dots +
+        "</svg>";
+    }
+
     var lastSessions = [];
+    var lastTrends = [];
 
     $("history-btn").addEventListener("click", async function () {
       $("history").classList.add("on");
@@ -1581,9 +1719,12 @@
         return;
       }
       try {
-        var data = await api("/liff/history?days=14", { method: "GET" });
+        // 成長の推移を見るには2週間では短いので90日ぶん取る（疲労・回復の計算は
+        // サーバ側で直近だけを見るので、期間を広げても着色は変わらない）。
+        var data = await api("/liff/history?days=90", { method: "GET" });
         muscleStates = data.training.muscles || [];
         lastSessions = data.training.sessions || [];
+        lastTrends = data.training.trends || [];
         renderHistoryScreen(lastSessions);
       } catch (_) {
         toast("読み込めなかった");
@@ -1743,6 +1884,11 @@
       var startY = ev.clientY;
       var base = 0;
       row.classList.add("dragging");
+      // ドラッグ中は文字が選択されて反転するのを止める（掴んで動かしづらい原因）。
+      // 指を離すまで body 全体で選択を無効化し、既にできた選択も消す。
+      document.body.classList.add("drag-lock");
+      var sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
       handle.setPointerCapture(ev.pointerId);
 
       function apply(y) { row.style.transform = "translateY(" + (y - startY + base) + "px)"; }
@@ -1771,6 +1917,7 @@
         handle.removeEventListener("pointerup", onUp);
         handle.removeEventListener("pointercancel", onUp);
         row.classList.remove("dragging");
+        document.body.classList.remove("drag-lock");
         row.style.transform = "";
         // DOM の並びを正として配列を作り直す（添字は動かしている間に古くなる）
         var order = [].map.call(list.children, function (el) { return el.dataset.uid; });
