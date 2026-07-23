@@ -1236,8 +1236,20 @@
     // ==========================================================
     // セッション
     // ==========================================================
+    /** このセッションの識別子。保存の再送で二重登録にならないようサーバへ渡す（K）。 */
+    var sessionId = null;
+    /** 保存を走らせたか。完了ボタンと最終セットの両方から finish() が来るため。 */
+    var saveStarted = false;
+
+    function newSessionId() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return "s" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
+    }
+
     function openSession() {
       exIdx = 0; setNo = 1; logs = [];
+      sessionId = newSessionId();
+      saveStarted = false;
       startedAt = Date.now();
       tickTimer = setInterval(tick, 1000);
       loadCurrent();
@@ -1492,7 +1504,11 @@
      */
     function saveSession() {
       if (!online) return;
+      // 完了ボタン・最終セット・中止シートの3経路から finish() が来るので、保存は1回だけ
+      if (saveStarted) return;
+      saveStarted = true;
       var body = {
+        sessionId: sessionId,
         sets: logs.map(function (l) {
           return { exercise: l.exercise, setNo: l.setNo, weightKg: l.weight, reps: l.reps, rir: l.rir };
         }),
