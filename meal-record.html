@@ -1386,6 +1386,11 @@
         toast("無料期間が終わったみたい。LINEのトークから登録してね");
         throw new Error("subscription_required");
       }
+      if (res.status === 409) {
+        var conflict = new Error("conflict");
+        conflict.conflict = true;   // 呼び出し側が「他で変わった」と判別できるように
+        throw conflict;
+      }
       if (!res.ok) throw new Error("api " + path + " -> " + res.status);
       return res.json();
     }
@@ -1780,15 +1785,50 @@
     function slotNo(s) { return parseInt(s, 10); }
 
     /** サーバに保存する。オフライン（デモ）のときは何もしない。 */
+    /**
+     * その枠の「自分が見た版」。記録が無ければ null（＝新規として入れるつもり）。
+     * 「食べていない」枠は entries が空なので、版は枠レベルで持つ。
+     */
+    function slotBaseUpdatedAt(s) {
+      return (log[s] && log[s].updatedAt) || null;
+    }
+
+    /** サーバの今日の状態を取り直して描き直す（競合で弾かれたときに使う）。 */
+    async function reload() {
+      if (!online) return;
+      try {
+        var data = await api("/liff/today", { method: "GET" });
+        adoptServerDay(data);
+        renderTimeline(null);
+        renderSummary(false);
+      } catch (_) { toast("読み込めなかった"); }
+    }
+
     function push(body) {
       if (!online) return;
+      var key = body.slot + "食目";
       api("/liff/meal", { method: "POST", body: JSON.stringify(body) })
-        .catch(function () { toast("保存できなかった。通信を確認してね"); });
+        .then(function (res) {
+          // サーバが書いた版を覚えておく。覚えないと次の保存で自分の書き込みと衝突する
+          if (log[key] && res && res.updatedAt) log[key].updatedAt = res.updatedAt;
+        })
+        .catch(function (e) {
+          // 409 = 自分が見ていた状態から変わっていた（D）。上書きせず読み直す。
+          // 画面を開きっぱなしにしている間にLINE側で記録が入った、が典型。
+          if (e && e.conflict) {
+            toast("他で記録が変わったみたい。最新にするね");
+            reload();
+            return;
+          }
+          toast("保存できなかった。通信を確認してね");
+        });
     }
 
     // Commit a meal into today's log
     function commit(entry, slot) {
       var s = slot || pendingSlot || nextOpenSlot();
+      // 追記で log を書き換える前に基準を控える（後で取ると自分の変更を基準にしてしまう）
+      var base = slotBaseUpdatedAt(s);
       var rec = {
         time: nowHM(),
         items: entry.name,
@@ -1821,7 +1861,8 @@
         kcal: t.kcal, p: t.p, c: t.c, f: t.f,
         grams: t.grams,
         parts: parts,
-        source: "liff"
+        source: "liff",
+        baseUpdatedAt: base
       });
 
       finishWrite(s, s + "に記録しました");
@@ -1838,6 +1879,7 @@
 
     /** 内訳の編集結果でその枠を「置き換える」（追記しない）。⑪ の保存経路。 */
     function replaceSlot(s, entry) {
+      var base = slotBaseUpdatedAt(s);
       var rec = {
         time: nowHM(),
         items: entry.name,
@@ -1853,16 +1895,18 @@
       push({
         slot: slotNo(s), status: "recorded",
         items: rec.items, kcal: t.kcal, p: t.p, c: t.c, f: t.f,
-        grams: t.grams, parts: rec.parts, source: "liff-edit"
+        grams: t.grams, parts: rec.parts, source: "liff-edit",
+        baseUpdatedAt: base
       });
       finishWrite(s, s + "の内訳を更新しました");
     }
 
     /** 「食べていない」の明示的な申告。未記録とは別の状態として保存する。 */
     function markSkipped(s) {
+      var base = slotBaseUpdatedAt(s);
       log[s].status = "skipped";
       log[s].entries = [];
-      push({ slot: slotNo(s), status: "skipped" });
+      push({ slot: slotNo(s), status: "skipped", baseUpdatedAt: base });
       finishWrite(s, s + "は食べていないと記録しました");
     }
 
@@ -2482,6 +2526,8 @@
         var key = sl.slot + "食目";
         if (!log[key]) { SLOTS.push(key); log[key] = { status: "unrecorded", entries: [] }; }
         log[key].status = sl.status;
+        // 楽観ロックの基準（D）。記録済み・食べていない のどちらにも付く
+        log[key].updatedAt = sl.updatedAt || null;
         if (sl.status === "recorded") {
           log[key].entries = [{
             time: "", items: sl.items || "記録済み",
