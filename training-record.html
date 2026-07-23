@@ -923,7 +923,7 @@
     var PLAN = { part: "", cycleNo: 1, exercises: [] };
 
     // 種目ライブラリ（/liff/catalog）。刻み(stepKg)と目標レップの供給源。
-    var CATALOG = { parts: [], items: [] };
+    var CATALOG = { parts: [], items: [], muscles: [] };
     var catalogByName = {};
 
     function indexCatalog() {
@@ -1769,7 +1769,10 @@
           return {
             split_label: s.split_label,
             exercises: (s.exercises || []).map(function (e) {
-              return { uid: "u" + (++uidSeq), name: e.name, sets: e.sets, reps: e.reps };
+              var c = { uid: "u" + (++uidSeq), name: e.name, sets: e.sets, reps: e.reps };
+              // 自分で登録した種目の「効く部位」。落とすと編集のたびに宣言が消える
+              if (e.muscles && e.muscles.length) c.muscles = e.muscles;
+              return c;
             })
           };
         })
@@ -1783,7 +1786,7 @@
       if (!online || CATALOG.items.length) return;
       try {
         var data = await api("/liff/catalog", { method: "GET" });
-        CATALOG = { parts: data.parts || [], items: data.items || [] };
+        CATALOG = { parts: data.parts || [], items: data.items || [], muscles: data.muscles || [] };
         indexCatalog();
       } catch (_) { /* 候補が無いだけ。並べ替えと削除はできる */ }
     }
@@ -2046,12 +2049,19 @@
             ? "見つかりませんでした。"
             : "種目ライブラリを読み込めませんでした。通信を確認してね。") + "</p>";
 
+        // ライブラリに無い種目は自分の名前で登録できる。ただし効く部位を
+        // 選んでもらう（分からないままだと疲労・回復に数えられないため）。
+        var custom = query.trim();
+        var customBlock = custom && !catalogByName[custom]
+          ? '<button class="add-row" id="pick-custom">「' + esc(custom) + '」を自分の種目として追加</button>'
+          : "";
+
         $("sheet-inner").innerHTML =
           '<div class="sheet-title">' + (cur ? "差し替える種目" : "追加する種目") + "</div>" +
           '<div class="sheet-sub">' + (cur ? esc(cur.name) + " と入れ替えます" : "今日のメニューの最後に足します") + "</div>" +
           '<div class="chips">' + partChips + "</div>" +
           '<input class="search" id="pick-q" placeholder="種目名で探す" value="' + esc(query) + '" autocomplete="off">' +
-          '<div class="pick-list">' + rows + "</div>" +
+          '<div class="pick-list">' + rows + "</div>" + customBlock +
           '<button class="act-btn" data-cancel="1">やめる</button>';
 
         $("sheet-inner").querySelectorAll("[data-p]").forEach(function (b) {
@@ -2068,6 +2078,66 @@
           b.addEventListener("click", function () { pick(b.dataset.n); });
         });
         $("sheet-inner").querySelector("[data-cancel]").addEventListener("click", closeSheet);
+        var cb = $("pick-custom");
+        if (cb) cb.addEventListener("click", function () { askMuscles(custom); });
+      }
+
+      /**
+       * 自分の種目の「効く部位」を選ばせる。
+       * ここで選んだ部位だけを主働筋として疲労・回復に数える（協働筋は推測しない）。
+       * 選ばずに追加もできるが、その場合は回復状況に出ないことを明示する。
+       */
+      function askMuscles(name) {
+        var picked = [];
+        function paintM() {
+          var chips = CATALOG.muscles.map(function (m) {
+            return '<button class="chip' + (picked.indexOf(m.id) >= 0 ? " on" : "") +
+              '" data-m="' + esc(m.id) + '">' + esc(m.label) + "</button>";
+          }).join("");
+          $("sheet-inner").innerHTML =
+            '<div class="sheet-title">' + esc(name) + "</div>" +
+            '<div class="sheet-sub">効く部位を選んでね（複数可）</div>' +
+            '<div class="chips">' + (chips || "部位を読み込めませんでした") + "</div>" +
+            '<button class="act-btn" data-a="ok">この内容で追加</button>' +
+            '<button class="act-btn" data-a="skip">部位を選ばずに追加</button>' +
+            '<button class="act-btn" data-cancel="1">やめる</button>' +
+            '<p class="hint">部位を選ぶと、疲労・回復の判定に入るよ。' +
+            '選ばないと記録はできるけど回復状況には出ないよ。</p>';
+
+          $("sheet-inner").querySelectorAll("[data-m]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              var id = b.dataset.m;
+              var i = picked.indexOf(id);
+              if (i >= 0) picked.splice(i, 1); else picked.push(id);
+              paintM();
+            });
+          });
+          $("sheet-inner").querySelectorAll("[data-a]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              if (b.dataset.a === "ok" && picked.length === 0) {
+                toast("部位を選ぶか「選ばずに追加」を押してね");
+                return;
+              }
+              addCustom(name, b.dataset.a === "ok" ? picked.slice() : []);
+            });
+          });
+          $("sheet-inner").querySelector("[data-cancel]").addEventListener("click", closeSheet);
+        }
+        paintM();
+      }
+
+      function addCustom(name, muscles) {
+        var e = { uid: "u" + (++uidSeq), name: name, sets: 3, reps: "8-12" };
+        if (muscles.length) e.muscles = muscles;
+        if (cur) {
+          cur.name = name;
+          cur.reps = "8-12";
+          if (muscles.length) cur.muscles = muscles; else delete cur.muscles;
+        } else {
+          draftSession().exercises.push(e);
+        }
+        renderEditList();
+        closeSheet();
       }
 
       function pick(name) {
@@ -2109,7 +2179,9 @@
             session_number: i + 1,
             split_label: s.split_label.trim(),
             exercises: s.exercises.map(function (e) {
-              return { name: e.name, sets: e.sets, reps: e.reps };
+              var o = { name: e.name, sets: e.sets, reps: e.reps };
+              if (e.muscles && e.muscles.length) o.muscles = e.muscles;
+              return o;
             })
           };
         })
