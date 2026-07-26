@@ -356,7 +356,7 @@
   <div class="progress-bar">
     <div class="progress-fill" id="progressFill" style="width: 0%"></div>
   </div>
-  <div class="progress-text" id="progressText">1 / 15</div>
+  <div class="progress-text" id="progressText">1 / 14</div>
 </div>
 
 <div class="steps-container" id="stepsContainer">
@@ -554,21 +554,9 @@
   </div>
 
   <!-- STEP 13: 時間帯 -->
+  <!-- STEP 13: 歩数 -->
   <div class="step" data-step="13" data-type="choice">
     <div class="step-number">STEP 13</div>
-    <div class="step-question">トレーニングする時間帯は？</div>
-    <div class="step-hint">食事スケジュールに反映するよ</div>
-    <div class="options">
-      <button class="option-btn" data-value="朝（4〜9時）"><span class="option-num">①</span>朝（4〜9時）</button>
-      <button class="option-btn" data-value="昼（10〜14時）"><span class="option-num">②</span>昼（10〜14時）</button>
-      <button class="option-btn" data-value="夕方（15〜19時）"><span class="option-num">③</span>夕方（15〜19時）</button>
-      <button class="option-btn" data-value="夜（20時以降）"><span class="option-num">④</span>夜（20時以降）</button>
-    </div>
-  </div>
-
-  <!-- STEP 14: 歩数 -->
-  <div class="step" data-step="14" data-type="choice">
-    <div class="step-number">STEP 14</div>
     <div class="step-question">普段1日何歩くらい歩く？</div>
     <div class="step-hint">スマホのヘルスケアアプリで確認できるよ。消費カロリーの計算に使うよ</div>
     <div class="options">
@@ -581,9 +569,9 @@
     </div>
   </div>
 
-  <!-- STEP 15: トレーニング場所 -->
-  <div class="step" data-step="15" data-type="choice">
-    <div class="step-number">STEP 15</div>
+  <!-- STEP 14: トレーニング場所 -->
+  <div class="step" data-step="14" data-type="choice">
+    <div class="step-number">STEP 14</div>
     <div class="step-question">どこでトレーニングする？</div>
     <div class="step-hint">使える器具に合わせてメニューを組むよ</div>
     <div class="options">
@@ -620,7 +608,7 @@
 </div>
 
 <script>
-const TOTAL_STEPS = 15;
+const TOTAL_STEPS = 14;
 const SERVER_URL = 'https://nirneeiegkarqtyxbkop.supabase.co/functions/v1/line-webhook/liff_register';
 
 let currentStep = 1;
@@ -1121,9 +1109,8 @@ async function submitForm() {
     gym_frequency: answers['step10'],
     training_history: answers['step11'],
     training_duration: answers['step12'],
-    training_time: answers['step13'],
-    daily_steps: answers['step14'],
-    training_location: answers['step15']
+    daily_steps: answers['step13'],
+    training_location: answers['step14']
   };
 
   try {
