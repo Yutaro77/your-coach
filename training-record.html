@@ -427,6 +427,17 @@
 
   .hint { font-size: 12px; color: var(--label-3); text-align: center; padding: 2px 12px; line-height: 1.5; }
 
+  /* トレ前後の食事タイミング（静的な豆知識コメント） */
+  .nutri-tip { background: var(--card); border-radius: var(--r-card); padding: 14px 16px; margin: 14px 4px 2px; box-shadow: var(--shadow-card); }
+  .nutri-tip h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 8px; }
+  .nutri-tip .row { display: flex; gap: 10px; padding: 8px 0; }
+  .nutri-tip .row + .row { border-top: 1px solid var(--separator); }
+  .nutri-tip .tag { flex: none; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; color: #fff; align-self: flex-start; margin-top: 1px; }
+  .nutri-tip .tag.pre { background: var(--orange); }
+  .nutri-tip .tag.post { background: var(--green); }
+  .nutri-tip .txt { font-size: 13px; line-height: 1.55; color: var(--label); }
+  .nutri-tip .foot { font-size: 11px; color: var(--label-3); margin: 9px 0 0; line-height: 1.5; }
+
   /* ---------------- 人体マップ（疲労・回復） ---------------- */
   /* 疲労は赤の濃淡、回復は黄緑、未使用はグレー。色だけに頼らず必ず一覧も併記する。 */
   :root {
@@ -687,6 +698,19 @@
     </div>
     <div id="ex-list" style="display:flex;flex-direction:column;gap:8px"></div>
     <p class="hint" id="home-hint">セットごとに重量と回数を記録します。<br>次の重量は記録から自動で決まります。</p>
+
+    <div class="nutri-tip">
+      <h3>トレ前・トレ後の食事</h3>
+      <div class="row">
+        <span class="tag pre">トレ前</span>
+        <span class="txt">1〜2時間前に、消化のよい炭水化物＋タンパク質を。直前（30〜60分前）なら、おにぎり・バナナなど軽い糖質を少量に。脂質・食物繊維は控えめが◎（消化を優先）。</span>
+      </div>
+      <div class="row">
+        <span class="tag post">トレ後</span>
+        <span class="txt">できれば1〜2時間以内に、タンパク質20〜40g＋炭水化物を。筋肉の回復と合成を後押しします。</span>
+      </div>
+      <p class="foot">※タイミングより1日の総量が大事。まずは1日の目標カロリー・タンパク質を満たすことを優先しよう。</p>
+    </div>
   </div>
 
   <button class="start" id="start-btn">トレーニングを開始</button>
