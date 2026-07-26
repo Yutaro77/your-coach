@@ -1133,7 +1133,21 @@ async function submitForm() {
     document.getElementById('completeScreen').classList.add('active');
   } catch (e) {
     document.getElementById('loading').classList.remove('active');
-    alert('登録できませんでした。通信環境を確認して、もう一度試してね。\n何度も失敗する場合はLINEのトークで教えてください。');
+    // --- 原因切り分け用の診断表示（一時的）---
+    //   IDトークン なし        → LIFFに openid スコープが無い（getIDToken が null）
+    //   IDトークン あり + 401  → LIFF_CHANNEL_ID 不一致 or トークン期限切れ
+    //   IDトークン あり + 500  → サーバ内例外
+    //   応答: 通信失敗           → ネットワーク or CORS（サーバに届いていない）
+    const hasToken = liffIdToken ? 'あり' : 'なし';
+    const m = String((e && e.message) || '');
+    const cm = m.match(/server (\d+)/);
+    const code = cm ? cm[1] : '通信失敗';
+    alert(
+      '登録できませんでした。\n\n【診断情報】\n' +
+      'IDトークン: ' + hasToken + '\n' +
+      'サーバ応答: ' + code + '\n\n' +
+      'この2つをLINEのトークでそのまま教えてください。'
+    );
     document.getElementById('btnNext').style.display = 'block';
   }
 }
