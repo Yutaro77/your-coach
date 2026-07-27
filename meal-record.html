@@ -461,6 +461,19 @@
   .sec-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
   .sec-meta { font-size: 13px; color: var(--label-2); }
 
+  /* 1日の食数を変えるステッパー（枠を増減） */
+  .mpd-row { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 12px; }
+  .mpd-label { font-size: 13px; color: var(--label-2); }
+  .mpd-stepper { display: flex; align-items: center; gap: 14px; }
+  .mpd-btn {
+    width: 30px; height: 30px; border-radius: 50%; border: none; padding: 0;
+    background: var(--fill); color: var(--label); font-size: 20px; font-weight: 700;
+    display: grid; place-items: center; cursor: pointer; touch-action: manipulation;
+  }
+  .mpd-btn:active { transform: scale(0.9); }
+  .mpd-btn[disabled] { color: var(--label-3); opacity: 0.6; }
+  .mpd-val { font-size: 16px; font-weight: 700; min-width: 3em; text-align: center; }
+
   .timeline { display: flex; flex-direction: column; gap: 10px; }
 
   .meal {
@@ -1196,6 +1209,15 @@
       <span class="sec-meta" id="meal-count">3件</span>
     </div>
 
+    <div class="mpd-row">
+      <span class="mpd-label">1日の食数</span>
+      <div class="mpd-stepper">
+        <button class="mpd-btn" id="mpd-down" aria-label="食数を減らす">−</button>
+        <span class="mpd-val num" id="mpd-val">4食</span>
+        <button class="mpd-btn" id="mpd-up" aria-label="食数を増やす">＋</button>
+      </div>
+    </div>
+
     <div class="timeline" id="timeline"></div>
 
     <button class="quick" id="repeat-btn">
@@ -1827,6 +1849,38 @@
         renderSummary(false);
       } catch (_) { toast("読み込めなかった"); }
     }
+
+    // 1日の食数（枠数）を変える。2〜8。サーバに保存して今日の表示を作り直す。
+    function paintMpd() {
+      $("mpd-val").textContent = MEALS_PER_DAY + "食";
+      $("mpd-down").disabled = MEALS_PER_DAY <= 2;
+      $("mpd-up").disabled = MEALS_PER_DAY >= 8;
+    }
+    var mpdBusy = false;
+    async function changeMealsPerDay(delta) {
+      if (mpdBusy) return;
+      var next = Math.max(2, Math.min(8, MEALS_PER_DAY + delta));
+      if (next === MEALS_PER_DAY) return;
+      if (!online) { // LINE外プレビューはローカルだけ反映
+        MEALS_PER_DAY = next;
+        SLOTS = [];
+        for (var i = 1; i <= next; i++) SLOTS.push(i + "食目");
+        SLOTS.forEach(function (s) { if (!log[s]) log[s] = { status: "unrecorded", entries: [] }; });
+        paintMpd(); renderTimeline(null); return;
+      }
+      mpdBusy = true;
+      try {
+        await api("/liff/meals_per_day", { method: "POST", body: JSON.stringify({ count: next }) });
+        await reload(); // MEALS_PER_DAY はサーバ値で再同期される
+        paintMpd();
+        toast("1日" + MEALS_PER_DAY + "食にしたよ");
+      } catch (e) {
+        if (!(e && e.message === "subscription_required")) toast("変更できなかった");
+        paintMpd();
+      } finally { mpdBusy = false; }
+    }
+    $("mpd-up").addEventListener("click", function () { changeMealsPerDay(1); });
+    $("mpd-down").addEventListener("click", function () { changeMealsPerDay(-1); });
 
     function push(body) {
       if (!online) return;
@@ -2541,6 +2595,7 @@
     /** サーバの枠データ（materialize 済み）を画面のモデルに移す。 */
     function adoptServerDay(data) {
       MEALS_PER_DAY = data.meals.perDay;
+      paintMpd();
       SLOTS = [];
       for (var i = 1; i <= MEALS_PER_DAY; i++) SLOTS.push(i + "食目");
       log = {};
@@ -2822,6 +2877,7 @@
       // 起動時は空（全枠が未記録）で描く。読み込みが終わるまで、
       // 記録していないものを一瞬でも表示しないため。
       $("home-hint").textContent = "読み込み中…";
+      paintMpd();
       renderTimeline(null);
       renderSummary(true);
 
@@ -2838,6 +2894,7 @@
         };
         HIST.today = HIST.days[HIST.days.length - 1].date;
         refreshQuick();
+        paintMpd();
         renderTimeline(null);
         renderSummary(false);
         $("home-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
