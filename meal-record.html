@@ -417,6 +417,33 @@
   }
   .fd-est { margin-top: 8px; font-size: 12px; color: var(--label-2); text-align: center; }
 
+  /* 素材の入力元を選ぶ段（カタログ検索の下）。手入力・写真/ラベルもここから足す */
+  .fd-src { display: flex; gap: 8px; margin: 2px 0 12px; }
+  .fd-src-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 8px; border-radius: 11px; font-size: 13px; font-weight: 600;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator); color: var(--label);
+  }
+  .fd-src-btn:active { background: var(--fill); }
+  .fd-src-btn svg { flex: none; }
+  /* 手入力（マクロ直打ち）の欄 */
+  .fd-macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .fd-macro-cell { display: flex; flex-direction: column; gap: 4px; }
+  .fd-macro-cell label { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; color: var(--label-2); }
+  .fd-in {
+    width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: 10px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font: inherit; font-size: 15px; font-weight: 700; color: var(--label); text-align: right;
+  }
+  .fd-in:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .fd-in.name { text-align: left; font-size: 15px; }
+  .fd-qty-sub { font-size: 12px; color: var(--label-2); margin-top: 2px; }
+  /* g / 割合 の切り替え */
+  .fd-seg { display: inline-flex; gap: 4px; margin-top: 10px; padding: 3px; border-radius: 10px; background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator); }
+  .fd-seg button { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--label-2); }
+  .fd-seg button.on { background: var(--blue); color: #fff; }
+  .fd-seg button:disabled { opacity: 0.4; }
+
   .fd-picked { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
   .fd-item { display: flex; align-items: center; gap: 10px; padding: 10px 13px; }
   .fd-item-n { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; text-align: left; background: none; border: 0; padding: 0; color: inherit; font-family: inherit; cursor: pointer; }
@@ -1516,6 +1543,10 @@
     // ------------------------------------------------------------
     function $(id) { return document.getElementById(id); }
     function fmt(n) { return Math.round(n).toLocaleString("en-US"); }
+    /** 数値化（不正なら0）。素材の栄養値を安全に足すため。 */
+    function num0(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+    /** input の value 用。null/undefined/空は空文字に（0 は "0" として残す）。 */
+    function vstr(v) { return (v === null || v === undefined || v === "") ? "" : String(v); }
     function clamp01(v) { return Math.max(0, Math.min(1, v)); }
     function tint(pair) {
       return "background:linear-gradient(145deg," + pair[0] + "," + pair[1] + ")";
@@ -1810,7 +1841,10 @@
       var parts = (log[s] && log[s].status === "recorded") ? slotParts(s) : null;
       if (parts && parts.length) {
         runBuilder(parts.map(function (p) {
-          return { code: p.code, name: p.name || "", grams: p.grams };
+          // カタログ素材は code/grams、マクロ素材（写真・ラベル・手入力）は値ごと復元する
+          return p.code
+            ? { code: p.code, name: p.name || "", grams: p.grams }
+            : { name: p.name || "", kcal: p.kcal, p: p.p, c: p.c, f: p.f, grams: p.grams || 0 };
         }), s);
       } else {
         setSheet(true, s);
@@ -1824,7 +1858,11 @@
       $("screen-title").textContent = title;
       $("screen").classList.add("on");
     }
-    function closeScreen() { $("screen").classList.remove("on"); }
+    function closeScreen() {
+      // ビルダーを閉じるときは保留中の撮影ルーティングも捨てる（キャンセル後の取り違え防止）
+      builderCapture = null;
+      $("screen").classList.remove("on");
+    }
     $("screen-back").addEventListener("click", closeScreen);
 
     /** 枠名（"2食目"）→ サーバの slot 番号。 */
@@ -2100,12 +2138,21 @@
     //   解析も換算もサーバに任せる（画面とAIで違う数値を出さないため）。
     // ------------------------------------------------------------
     var pendingMode = "meal";
+    // 素材ビルダーから撮る写真/ラベルはここに {start,done,fail} を積む。
+    // セットされている間、#camera の解析結果は通常の記録フローでなくビルダーへ戻る。
+    var builderCapture = null;
 
     function capture(mode) {
       pendingMode = mode;
       var input = $("camera");
       input.value = "";
       input.click();
+    }
+
+    /** 素材ビルダー専用の撮影。解析結果を素材としてビルダーに返す（画面は置き換えない）。 */
+    function capturePart(mode, handlers) {
+      builderCapture = handlers;
+      capture(mode);
     }
 
     /** 長辺 maxPx に縮小して JPEG(base64) にする。原寸のまま送ると通信も関数も重い。 */
@@ -2131,6 +2178,25 @@
       var file = this.files && this.files[0];
       if (!file) return;
       var isLabel = pendingMode === "label";
+
+      // 素材ビルダーからの撮影は、解析結果を「素材」としてビルダーに戻す。
+      // 画面全体を解析結果へ置き換える通常フローとは別に処理する。
+      if (builderCapture) {
+        var bc = builderCapture; builderCapture = null;
+        bc.start();
+        try {
+          var b64b = await shrink(file, 1280);
+          var resb = await api("/liff/meal/photo", {
+            method: "POST",
+            body: JSON.stringify({ image: b64b, mediaType: "image/jpeg", mode: pendingMode })
+          });
+          bc.done(resb, pendingMode);
+        } catch (e) {
+          bc.fail(e);
+        }
+        return;
+      }
+
       openScreen(isLabel ? "栄養成分表示を読み取り中" : "解析中");
       $("screen-body").innerHTML =
         '<div class="analyzing"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
@@ -2332,20 +2398,40 @@
       };
     }
 
-    // preset: 事前に積む素材（{code,name,grams}）。editSlot: 指定すると「内訳を編集」＝
-    // 追記でなくその枠を置き換える（⑪）。編集時は preset の食品を成分表から引き直して
-    // per-100g 栄養を得る（parts の絶対値からは量変更時に正しく再計算できないため）。
+    // preset: 事前に積む素材。カタログ素材 {code,name,grams} と、マクロ直持ち素材
+    // {name,kcal,p,c,f,grams}（手入力・写真・ラベル由来）の両方を受ける。
+    // editSlot: 指定すると「内訳を編集」＝追記でなくその枠を置き換える（⑪）。
+    // 編集時は preset のカタログ食品を成分表から引き直して per-100g 栄養を得る
+    // （parts の絶対値からは量変更時に正しく再計算できないため）。マクロ素材は
+    // 自分の値をそのまま持っているので引き直し不要。
     function runBuilder(preset, editSlot) {
       openScreen(editSlot ? "内訳を編集" : "素材から記録");
-      var picked = (preset || []).map(function (x) { return { code: x.code, name: x.name, grams: x.grams }; });
+      var picked = (preset || []).map(function (x) {
+        return x.code
+          ? { code: x.code, name: x.name, grams: x.grams }
+          : { name: x.name, kcal: num0(x.kcal), p: num0(x.p), c: num0(x.c), f: num0(x.f), grams: x.grams || 0 };
+      });
       var results = [];
-      var sel = null;      // 量を入力中の食品
+      var sel = null;      // 量を入力中のカタログ食品
       var selGrams = 100;
       var searchTimer = null;
 
       $("screen-body").innerHTML =
         '<input class="fd-search" id="fd-q" placeholder="食材で検索（例：鶏むね、ごはん）" autocomplete="off">' +
         '<div class="fd-list" id="fd-list"></div>' +
+        // カタログに無い食品は「自分で入力」、市販品や外食は「写真・ラベル」から素材化する
+        '<div class="fd-src">' +
+          '<button class="fd-src-btn" id="fd-manual">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<path d="M4 20h16M6.5 15.6l8.9-8.9a2.1 2.1 0 013 3l-8.9 8.9-4 1 1-4z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>' +
+            '自分で入力</button>' +
+          '<button class="fd-src-btn" id="fd-photo">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<rect x="2.6" y="6.4" width="18.8" height="14" rx="3.4" stroke="currentColor" stroke-width="1.9"/>' +
+            '<circle cx="12" cy="13.4" r="4" stroke="currentColor" stroke-width="1.9"/>' +
+            '<path d="M8.6 6.4l1.2-2.3h4.4l1.2 2.3" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>' +
+            '写真・ラベル</button>' +
+        '</div>' +
         '<div id="fd-qty"></div>' +
         '<div class="sec-head" style="padding-top:14px"><h2 class="sec-title" style="font-size:17px">追加した素材</h2>' +
           '<span class="sec-meta" id="fd-count"></span></div>' +
@@ -2357,28 +2443,46 @@
           '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="b-f">0</span></div>' +
         "</div>" +
         '<button class="save" id="b-save">保存</button>' +
-        '<p class="hint">栄養価は日本食品標準成分表（八訂）から計算しています。</p>';
+        '<p class="hint">カタログ素材は成分表（八訂）から、手入力・写真の素材はあなたの入力や解析結果から計算します。</p>';
 
-      var byCode = {};   // 追加済みの計算に使う食品データ
+      var byCode = {};   // 追加済みカタログ素材の計算に使う食品データ
 
-      // 編集モード: preset の食品を成分表から引き直して byCode を埋める（量変更に追従させる）
-      if (editSlot && picked.length && online) {
-        var codes = picked.map(function (x) { return x.code; }).filter(Boolean).join(",");
-        api("/liff/foods?codes=" + encodeURIComponent(codes), { method: "GET" })
-          .then(function (data) {
-            (data.items || []).forEach(function (f) { byCode[f.code] = f; });
-            // preset の name はサーバ由来の短縮名で埋めておく（未取得なら code のまま）
-            picked.forEach(function (x) { if (byCode[x.code]) x.name = byCode[x.code].label; });
-            renderPicked();
-          })
-          .catch(function () { /* 引けなくても手で追加・削除はできる */ });
+      // 「1/3」等の割合、または小数・整数を倍率として解釈する。読めなければ NaN。
+      function parseFraction(s) {
+        s = String(s == null ? "" : s).trim();
+        if (!s) return NaN;
+        var m = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+        if (m) { var d = Number(m[2]); return d > 0 ? Number(m[1]) / d : NaN; }
+        var n = Number(s);
+        return isFinite(n) ? n : NaN;
+      }
+
+      /** 素材1件の栄養。カタログは成分表から、マクロ素材は自分の値から。未取得のカタログは null。 */
+      function itemNutrition(x) {
+        if (x.code) { var f = byCode[x.code]; return f ? foodNutrition(f, x.grams) : null; }
+        return { kcal: num0(x.kcal), p: num0(x.p), c: num0(x.c), f: num0(x.f) };
+      }
+
+      // 編集モード: preset のカタログ食品を成分表から引き直して byCode を埋める（量変更に追従）。
+      // マクロ素材（code 無し）は自分の値を持つので引き直さない。
+      if (editSlot && online) {
+        var codes = picked.map(function (x) { return x.code; }).filter(Boolean);
+        if (codes.length) {
+          api("/liff/foods?codes=" + encodeURIComponent(codes.join(",")), { method: "GET" })
+            .then(function (data) {
+              (data.items || []).forEach(function (f) { byCode[f.code] = f; });
+              // preset の name はサーバ由来の短縮名で埋めておく（未取得なら code のまま）
+              picked.forEach(function (x) { if (x.code && byCode[x.code]) x.name = byCode[x.code].label; });
+              renderPicked();
+            })
+            .catch(function () { /* 引けなくても手で追加・削除はできる */ });
+        }
       }
 
       function totals() {
         return picked.reduce(function (a, x) {
-          var f = byCode[x.code];
-          if (!f) return a;
-          var n = foodNutrition(f, x.grams);
+          var n = itemNutrition(x);
+          if (!n) return a;
           a.kcal += n.kcal; a.p += n.p; a.c += n.c; a.f += n.f;
           return a;
         }, { kcal: 0, p: 0, c: 0, f: 0 });
@@ -2388,22 +2492,27 @@
         var wrap = $("fd-picked");
         wrap.innerHTML = "";
         picked.forEach(function (x, i) {
-          var f = byCode[x.code];
-          var n = f ? foodNutrition(f, x.grams) : { kcal: 0 };
+          var n = itemNutrition(x) || { kcal: 0 };
+          var gLabel = x.grams > 0 ? " " + x.grams + "g" : "";
           var row = document.createElement("div");
           row.className = "card fd-item";
           row.innerHTML =
-            '<button class="fd-item-n">' + esc(x.name) + '<span class="fd-item-g"> ' + x.grams + "g</span></button>" +
-            '<span class="fd-item-k num">' + n.kcal + "</span>" +
+            '<button class="fd-item-n">' + esc(x.name) + '<span class="fd-item-g">' + gLabel + "</span></button>" +
+            '<span class="fd-item-k num">' + Math.round(n.kcal) + "</span>" +
             '<button class="fd-del" aria-label="外す">×</button>';
-          // 行をタップ → その素材を量入力に戻す（一旦 picked から抜き、追加で上書き）。
-          // 「消して再追加」より速く1素材の量を直せる＝内訳編集の主目的。
+          // 行をタップ → その素材を編集に戻す。「消して再追加」より速く直せる＝内訳編集の主目的。
           row.querySelector(".fd-item-n").addEventListener("click", function () {
-            if (!f) return; // 成分表をまだ引けていない（編集モードの取得前）
-            sel = f;
-            selGrams = x.grams;
-            picked.splice(i, 1);
-            renderQty(); renderPicked();
+            if (x.code) {
+              var f = byCode[x.code];
+              if (!f) return; // 成分表をまだ引けていない（編集モードの取得前）
+              sel = f;
+              selGrams = x.grams;
+              picked.splice(i, 1);
+              renderQty(); renderPicked();
+            } else {
+              // マクロ素材は手入力の欄に戻して数値を直す（その位置を置き換える）
+              openManual({ name: x.name, kcal: x.kcal, p: x.p, c: x.c, f: x.f, grams: x.grams || "", editIndex: i });
+            }
             $("fd-qty").scrollIntoView({ block: "nearest", behavior: "smooth" });
           });
           row.querySelector(".fd-del").addEventListener("click", function () {
@@ -2421,6 +2530,167 @@
         $("b-c").textContent = Math.round(t.c);
         $("b-f").textContent = Math.round(t.f);
       }
+
+      // --- 自分で入力（マクロ直打ち）。カタログに無い食品を名前+kcal/PCFで足す ---
+      function openManual(draft) {
+        sel = null;
+        draft = draft || {};
+        var editIndex = draft.editIndex;
+        function cell(id, label, v) {
+          return '<div class="fd-macro-cell"><label>' + label + '</label>' +
+            '<input class="fd-in" id="' + id + '" type="number" inputmode="decimal" value="' + esc(vstr(v)) + '"></div>';
+        }
+        var wrap = $("fd-qty");
+        wrap.innerHTML =
+          '<div class="fd-qty">' +
+            '<div class="fd-qty-name">' + (editIndex != null ? "素材を編集" : "自分で入力") + '</div>' +
+            '<div class="fd-qty-sub">パッケージや外食の栄養表示から。名前とkcalは必須です。</div>' +
+            '<input class="fd-in name" id="m-name" placeholder="食品名（例：プロテインバー）" style="margin-top:10px" value="' + esc(vstr(draft.name)) + '">' +
+            '<div class="fd-macro-grid">' +
+              cell("m-kcal", "KCAL", draft.kcal) +
+              cell("m-p", "P (g)", draft.p) +
+              cell("m-c", "C (g)", draft.c) +
+              cell("m-f", "F (g)", draft.f) +
+            '</div>' +
+            '<div class="fd-g" style="margin-top:10px"><input class="fd-in" id="m-grams" type="number" inputmode="numeric" placeholder="量" value="' + esc(vstr(draft.grams)) + '"><span>g（任意）</span></div>' +
+            '<button class="fd-add" id="m-add">' + (editIndex != null ? "更新する" : "追加する") + '</button>' +
+          "</div>";
+        $("m-add").addEventListener("click", function () {
+          var name = $("m-name").value.trim();
+          var kcal = Number($("m-kcal").value);
+          if (!name) { toast("食品名を入れてね"); return; }
+          if (!isFinite(kcal) || kcal < 0) { toast("kcalを数字で入れてね"); return; }
+          var part = {
+            name: name.slice(0, 40),
+            kcal: Math.round(kcal),
+            p: Math.max(0, Number($("m-p").value) || 0),
+            c: Math.max(0, Number($("m-c").value) || 0),
+            f: Math.max(0, Number($("m-f").value) || 0),
+            grams: Math.max(0, Math.round(Number($("m-grams").value) || 0))
+          };
+          if (editIndex != null) picked[editIndex] = part; else picked.push(part);
+          wrap.innerHTML = "";
+          renderPicked();
+        });
+      }
+
+      // --- 写真・ラベルから素材を足す。解析→分量(g/割合)→素材化 ---
+      function openPhotoChoice() {
+        sel = null;
+        var wrap = $("fd-qty");
+        wrap.innerHTML =
+          '<div class="fd-qty">' +
+            '<div class="fd-qty-name">写真・ラベルから足す</div>' +
+            '<div class="fd-qty-sub">料理の写真か、パッケージの栄養成分表示を撮ってね。撮ったあとで分量を決められます。</div>' +
+            '<div class="fd-src" style="margin:12px 0 0">' +
+              '<button class="fd-src-btn" id="fp-meal">料理の写真</button>' +
+              '<button class="fd-src-btn" id="fp-label">栄養成分表示</button>' +
+            '</div>' +
+          "</div>";
+        $("fp-meal").addEventListener("click", function () { startPhoto("meal"); });
+        $("fp-label").addEventListener("click", function () { startPhoto("label"); });
+      }
+
+      function startPhoto(mode) {
+        if (online) {
+          capturePart(mode, {
+            start: function () {
+              $("fd-qty").innerHTML = '<div class="fd-qty"><div class="fd-qty-name">' +
+                (mode === "label" ? "栄養成分表示を読み取り中…" : "解析中…") +
+                '</div><div class="analyzing" style="margin-top:10px"><div class="skel"></div><div class="skel"></div></div></div>';
+            },
+            done: function (res, m) { renderPhotoScale(res, m); },
+            fail: function () {
+              toast(mode === "label" ? "読み取れなかった。表示部分を大きく写してね" : "解析できなかった。もう一度撮ってね");
+              openPhotoChoice();
+            }
+          });
+        } else {
+          // オフライン（LINE外プレビュー）はデモ解析で通す
+          renderPhotoScale(mode === "label"
+            ? { items: "ザバス ミルクプロテイン", kcal: 103, p: 15, c: 10, f: 0, grams: 0 }
+            : { items: "鶏むね肉のサラダボウル", grams: 320, kcal: 480, p: 45, c: 38, f: 14 }, mode);
+        }
+      }
+
+      function renderPhotoScale(analysis, mode) {
+        sel = null;
+        var name = String(analysis.items || (mode === "label" ? "商品" : "料理")).slice(0, 40);
+        var base = { kcal: num0(analysis.kcal), p: num0(analysis.p), c: num0(analysis.c), f: num0(analysis.f) };
+        var baseGrams = Math.max(0, Math.round(num0(analysis.grams)));
+        var scaleMode = baseGrams > 0 ? "g" : "ratio";  // 重量不明なら割合のみ
+        var gVal = baseGrams || 0;
+        var rVal = "1";
+
+        function scale() {
+          if (scaleMode === "g") return baseGrams > 0 ? gVal / baseGrams : 1;
+          var fr = parseFraction(rVal);
+          return isFinite(fr) && fr >= 0 ? fr : NaN;
+        }
+        function result() {
+          var s = scale();
+          if (!isFinite(s)) return null;
+          return {
+            kcal: Math.round(base.kcal * s),
+            p: Math.round(base.p * s * 10) / 10,
+            c: Math.round(base.c * s * 10) / 10,
+            f: Math.round(base.f * s * 10) / 10,
+            grams: baseGrams > 0 ? Math.max(0, Math.round(baseGrams * s)) : 0
+          };
+        }
+        function estText() {
+          var r = result();
+          return r
+            ? r.kcal + "kcal ／ P" + r.p + " C" + r.c + " F" + r.f + (r.grams > 0 ? "（" + r.grams + "g）" : "")
+            : "分量を入れてね";
+        }
+
+        var wrap = $("fd-qty");
+        function paint() {
+          wrap.innerHTML =
+            '<div class="fd-qty">' +
+              '<div class="fd-qty-name">' + esc(name) + "</div>" +
+              '<div class="fd-qty-sub">' + (mode === "label" ? "栄養成分表示の値" : "AIの解析値") +
+                (baseGrams > 0 ? "（" + base.kcal + "kcal／" + baseGrams + "g 相当）" : "（1回分・重量不明）") + "</div>" +
+              '<div class="fd-seg" style="margin-top:12px">' +
+                '<button data-m="g"' + (scaleMode === "g" ? ' class="on"' : "") + (baseGrams > 0 ? "" : " disabled") + ">グラム</button>" +
+                '<button data-m="ratio"' + (scaleMode === "ratio" ? ' class="on"' : "") + ">割合</button>" +
+              "</div>" +
+              (scaleMode === "g"
+                ? '<div class="fd-g" style="margin-top:10px"><input class="fd-in" id="sc-g" type="number" inputmode="numeric" value="' + gVal + '"><span>g 食べた</span></div>'
+                : '<div class="fd-g" style="margin-top:10px"><input class="fd-in" id="sc-r" type="text" inputmode="text" placeholder="例：1/3 または 0.5" value="' + esc(rVal) + '"><span>ぶん</span></div>') +
+              '<div class="fd-est num">' + estText() + "</div>" +
+              '<button class="fd-add" id="sc-add">追加する</button>' +
+            "</div>";
+          Array.prototype.forEach.call(wrap.querySelectorAll("[data-m]"), function (b) {
+            if (b.disabled) return;
+            b.addEventListener("click", function () { scaleMode = b.dataset.m; paint(); });
+          });
+          var gi = $("sc-g");
+          if (gi) gi.addEventListener("input", function () {
+            gVal = Math.max(0, Math.min(5000, Number(this.value) || 0));
+            wrap.querySelector(".fd-est").textContent = estText();
+          });
+          var ri = $("sc-r");
+          if (ri) ri.addEventListener("input", function () {
+            rVal = this.value;
+            wrap.querySelector(".fd-est").textContent = estText();
+          });
+          $("sc-add").addEventListener("click", function () {
+            var r = result();
+            if (!r) { toast("分量を正しく入れてね（例：1/3）"); return; }
+            picked.push({ name: name, kcal: r.kcal, p: r.p, c: r.c, f: r.f, grams: r.grams });
+            wrap.innerHTML = "";
+            renderPicked();
+            $("fd-picked").scrollIntoView({ block: "nearest", behavior: "smooth" });
+          });
+        }
+        paint();
+        $("fd-qty").scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+
+      $("fd-manual").addEventListener("click", function () { openManual(); });
+      $("fd-photo").addEventListener("click", function () { openPhotoChoice(); });
 
       function renderQty() {
         var wrap = $("fd-qty");
@@ -2519,10 +2789,16 @@
         }
         var t = totals();
         var entry = {
-          name: picked.map(function (x) { return x.name + x.grams + "g"; }).join("・"),
+          // 重量が分かる素材は「名前+g」、分からない素材（ラベル1本あたり等）は名前だけ
+          name: picked.map(function (x) { return x.grams > 0 ? x.name + x.grams + "g" : x.name; }).join("・"),
           kcal: t.kcal, p: t.p, c: t.c, f: t.f,
-          grams: picked.reduce(function (a, x) { return a + x.grams; }, 0),
-          parts: picked.map(function (x) { return { code: x.code, grams: x.grams }; }),
+          grams: picked.reduce(function (a, x) { return a + (x.grams || 0); }, 0),
+          // カタログ素材は {code,grams}（サーバが成分表から再計算）、マクロ素材は値ごと送る
+          parts: picked.map(function (x) {
+            return x.code
+              ? { code: x.code, grams: x.grams }
+              : { name: x.name, kcal: x.kcal, p: x.p, c: x.c, f: x.f, grams: x.grams || 0 };
+          }),
           emoji: "🍽️", tint: ["#DFF3DC", "#93D18C"]
         };
         // 編集はその枠を「置き換える」。新規記録は空き枠へ追記する。
