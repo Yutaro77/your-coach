@@ -763,6 +763,13 @@
   .opt-t { flex: 1; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
   .opt-hint { font-size: 12px; color: var(--label-3); }
   .opt.primary .opt-t { font-weight: 600; }
+  /* 削除など取り消し系は赤で明示（誤タップの重さを色で伝える） */
+  .opt.danger .opt-ic, .opt.danger .opt-t { color: #ff3b30; }
+  :root[data-theme="dark"] .opt.danger .opt-ic, :root[data-theme="dark"] .opt.danger .opt-t { color: #ff453a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .opt.danger .opt-ic,
+    :root:not([data-theme="light"]) .opt.danger .opt-t { color: #ff453a; }
+  }
 
   .sheet-cancel {
     background: var(--card-elevated);
@@ -944,6 +951,22 @@
     box-shadow: 0 4px 14px color-mix(in srgb, var(--blue) 30%, transparent);
   }
   .save:active { transform: scale(0.975); opacity: 0.9; }
+  /* 記録ごと削除（編集画面の下・控えめだが赤で意図を伝える） */
+  .del-record {
+    width: 100%;
+    margin-top: 10px;
+    padding: 13px;
+    border-radius: 13px;
+    background: color-mix(in srgb, #ff3b30 10%, transparent);
+    color: #ff3b30;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .del-record:active { opacity: 0.7; }
+  :root[data-theme="dark"] .del-record { color: #ff453a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .del-record { color: #ff453a; }
+  }
 
   .slot-pick { display: flex; gap: 7px; }
   .slot-chip {
@@ -1032,6 +1055,49 @@
     :root:not([data-theme="light"]) .toast { background: rgba(242, 242, 247, 0.94); color: #000; }
   }
   .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* 確認ダイアログ（削除など）。シート(60)・解析画面(70)・トースト(80)より前面に。 */
+  .confirm {
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+  }
+  .confirm[hidden] { display: none; }
+  .confirm-box {
+    width: 100%;
+    max-width: 300px;
+    background: var(--card-elevated);
+    border-radius: 18px;
+    padding: 20px 18px 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    text-align: center;
+  }
+  .confirm-msg {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--label);
+    margin: 2px 0 16px;
+  }
+  .confirm-yes, .confirm-no {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .confirm-yes { background: #ff3b30; color: #fff; }
+  .confirm-no { margin-top: 8px; background: var(--fill); color: var(--label); font-weight: 600; }
+  :root[data-theme="dark"] .confirm-yes { background: #ff453a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .confirm-yes { background: #ff453a; }
+  }
 
   /* ---------------------------------------------------------------
      History（T11）
@@ -1351,6 +1417,19 @@
       </button>
     </div>
 
+    <!-- 記録済み・食べていない申告の枠だけ表示。記録ミスを取り消して未記録に戻す。 -->
+    <div class="sheet-group" id="delete-group" hidden>
+      <button class="opt danger" data-act="delete">
+        <span class="opt-ic">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 7h14M9.5 7V5.4h5V7M7 7l.8 12.2a1.4 1.4 0 001.4 1.3h5.6a1.4 1.4 0 001.4-1.3L18 7"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="opt-t">この記録を削除</span>
+      </button>
+    </div>
+
     <button class="sheet-cancel" id="sheet-cancel">キャンセル</button>
   </div>
 
@@ -1424,6 +1503,15 @@
             stroke-linejoin="round" />
     </svg>
     <span id="toast-text">記録しました</span>
+  </div>
+
+  <!-- 削除など取り返しのつかない操作の確認。シート・解析画面の上に出す（最前面）。 -->
+  <div class="confirm" id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-msg" hidden>
+    <div class="confirm-box">
+      <p class="confirm-msg" id="confirm-msg"></p>
+      <button class="confirm-yes" id="confirm-yes">削除する</button>
+      <button class="confirm-no" id="confirm-no">キャンセル</button>
+    </div>
   </div>
 </div>
 
@@ -1792,6 +1880,27 @@
     }
 
     // ------------------------------------------------------------
+    // 確認ダイアログ（削除など取り返しのつかない操作の前に一拍おく）
+    // ------------------------------------------------------------
+    var confirmCb = null;
+    function askConfirm(message, yesLabel, onYes) {
+      confirmCb = onYes;
+      $("confirm-msg").textContent = message;
+      $("confirm-yes").textContent = yesLabel || "削除する";
+      $("confirm").hidden = false;
+    }
+    function closeConfirm() { $("confirm").hidden = true; confirmCb = null; }
+    $("confirm-no").addEventListener("click", closeConfirm);
+    $("confirm").addEventListener("click", function (e) {
+      if (e.target === $("confirm")) closeConfirm();   // 背景タップで閉じる
+    });
+    $("confirm-yes").addEventListener("click", function () {
+      var cb = confirmCb;
+      closeConfirm();
+      if (cb) cb();
+    });
+
+    // ------------------------------------------------------------
     // Sheet
     // ------------------------------------------------------------
     var sheetOpen = false;
@@ -1823,6 +1932,9 @@
         renderSuggestOption(pendingSlot);
         $("sheet-hd").textContent = pendingSlot ? pendingSlot + "を記録する" : "記録する";
         $("skip-group").hidden = !pendingSlot;
+        // 削除は「消すものがある」＝記録済み or 食べていない申告の枠だけに出す
+        var st = pendingSlot && log[pendingSlot] ? log[pendingSlot].status : "unrecorded";
+        $("delete-group").hidden = !(st === "recorded" || st === "skipped");
       }
       $("sheet").classList.toggle("on", on);
       $("scrim").classList.toggle("on", on);
@@ -2024,6 +2136,20 @@
       log[s].entries = [];
       push({ slot: slotNo(s), status: "skipped", baseUpdatedAt: base });
       finishWrite(s, s + "は食べていないと記録しました");
+    }
+
+    /**
+     * 記録ミスの取り消し。その枠を消して「未記録」に戻す。
+     * 「食べていない」申告とは別物（沈黙に戻す）。行ごと消すので合計からも外れる。
+     * 楽観ロックの版（baseUpdatedAt）を先に控えてから log を書き換える。
+     */
+    function deleteRecord(s) {
+      askConfirm(s + "の記録を削除して未記録に戻しますか？", "削除する", function () {
+        var base = slotBaseUpdatedAt(s);
+        log[s] = { status: "unrecorded", entries: [] };
+        push({ slot: slotNo(s), status: "unrecorded", baseUpdatedAt: base });
+        finishWrite(s, s + "の記録を削除しました");
+      });
     }
 
     function finishWrite(s, message) {
@@ -2443,6 +2569,8 @@
           '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="b-f">0</span></div>' +
         "</div>" +
         '<button class="save" id="b-save">保存</button>' +
+        // 編集で開いたときだけ「記録ごと削除」を出す（間違えて記録した枠を未記録に戻す）
+        (editSlot ? '<button class="del-record" id="b-del">この記録を削除</button>' : "") +
         '<p class="hint">カタログ素材は成分表（八訂）から、手入力・写真の素材はあなたの入力や解析結果から計算します。</p>';
 
       var byCode = {};   // 追加済みカタログ素材の計算に使う食品データ
@@ -2691,6 +2819,10 @@
 
       $("fd-manual").addEventListener("click", function () { openManual(); });
       $("fd-photo").addEventListener("click", function () { openPhotoChoice(); });
+      // 編集モードのみ：この記録ごと削除して未記録に戻す
+      if (editSlot) {
+        $("b-del").addEventListener("click", function () { deleteRecord(editSlot); });
+      }
 
       function renderQty() {
         var wrap = $("fd-qty");
@@ -2844,6 +2976,7 @@
         }
         else if (act === "manual") runBuilder();
         else if (act === "skip" && pendingSlot) markSkipped(pendingSlot);
+        else if (act === "delete" && pendingSlot) deleteRecord(pendingSlot);
       }, 240);
     });
 
@@ -2861,7 +2994,8 @@
     // --- Esc closes layers ---
     document.addEventListener("keydown", function (e) {
       if (e.key !== "Escape") return;
-      if ($("screen").classList.contains("on")) closeScreen();
+      if (!$("confirm").hidden) closeConfirm();   // 確認が最前面。まずこれを閉じる
+      else if ($("screen").classList.contains("on")) closeScreen();
       else if (sheetOpen) setSheet(false);
     });
 
