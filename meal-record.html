@@ -1490,10 +1490,11 @@
       </section>
 
       <div class="sec-head" style="padding-top:2px">
-        <h2 class="sec-title" style="font-size:15px">平均（記録した日）</h2>
+        <h2 class="sec-title" style="font-size:15px">平均</h2>
         <span class="sec-meta" id="avg-meta"></span>
       </div>
       <div class="totrow" id="avg-tot"></div>
+      <p class="hint" id="avg-note" style="text-align:left" hidden>未記録の枠がある日は平均に入れていません。食べなかった枠を「食べていない」にすると、その日も平均に入ります。</p>
 
       <div class="sec-head">
         <h2 class="sec-title" id="day-title">—</h2>
@@ -1501,7 +1502,7 @@
       </div>
       <div class="totrow" id="day-tot"></div>
       <div class="daylog" id="daylog"></div>
-      <p class="hint" id="edit-hint" style="text-align:left" hidden>記録済みの枠をタップすると、その日の記録を直したり削除できます。</p>
+      <p class="hint" id="edit-hint" style="text-align:left" hidden>枠をタップすると、その日の記録を追加・修正・削除できます。</p>
 
       <p class="hint" id="history-hint"></p>
     </div>
@@ -2548,7 +2549,11 @@
     // （parts の絶対値からは量変更時に正しく再計算できないため）。マクロ素材は
     // 自分の値をそのまま持っているので引き直し不要。
     function runBuilder(preset, editSlot, editCtx) {
-      openScreen(editCtx ? (editCtx.dateLabel + "の記録を直す") : editSlot ? "内訳を編集" : "素材から記録");
+      openScreen(
+        editCtx
+          ? (editCtx.dateLabel + (editCtx.hasRecord ? "の記録を直す" : "の記録を追加"))
+          : editSlot ? "内訳を編集" : "素材から記録",
+      );
       var picked = (preset || []).map(function (x) {
         return x.code
           ? { code: x.code, name: x.name, grams: x.grams }
@@ -2586,8 +2591,9 @@
           '<div class="mg-cell"><span class="mg-k" style="color:var(--yellow)">F</span><span class="mg-v num" id="b-f">0</span></div>' +
         "</div>" +
         '<button class="save" id="b-save">保存</button>' +
-        // 編集で開いたときだけ「記録ごと削除」を出す（間違えて記録した枠を未記録に戻す）
-        (editSlot ? '<button class="del-record" id="b-del">この記録を削除</button>' : "") +
+        // 既存の記録がある枠だけ「記録ごと削除」を出す（未記録の追加時は消すものが無い）。
+        // 今日の編集(editSlot・editCtxなし)は必ず記録があるので出す。
+        ((editSlot && (!editCtx || editCtx.hasRecord)) ? '<button class="del-record" id="b-del">この記録を削除</button>' : "") +
         '<p class="hint">カタログ素材は成分表（八訂）から、手入力・写真の素材はあなたの入力や解析結果から計算します。</p>';
 
       var byCode = {};   // 追加済みカタログ素材の計算に使う食品データ
@@ -2836,8 +2842,8 @@
 
       $("fd-manual").addEventListener("click", function () { openManual(); });
       $("fd-photo").addEventListener("click", function () { openPhotoChoice(); });
-      // 編集モードのみ：この記録ごと削除して未記録に戻す（過去日は日付を明示して削除）
-      if (editSlot) {
+      // 「この記録を削除」は既存の記録がある枠だけ描画される。あれば配線する。
+      if ($("b-del")) {
         $("b-del").addEventListener("click", function () {
           if (editCtx) deletePastEdit();
           else deleteRecord(editSlot);
@@ -2936,7 +2942,9 @@
 
       $("b-save").addEventListener("click", function () {
         if (!picked.length) {
-          toast(editSlot ? "素材が全部無くなってるよ" : "素材を追加してね");
+          // 既存の記録を編集中に空にした＝「全部無くなってる」、新規追加＝「追加してね」
+          var editingExisting = editSlot && (!editCtx || editCtx.hasRecord);
+          toast(editingExisting ? "素材が全部無くなってるよ" : "素材を追加してね");
           return;
         }
         var t = totals();
@@ -3140,7 +3148,7 @@
         histSel = -1;
         renderHistory();
         $("history-hint").textContent =
-          "平均は記録がある日だけで計算しています。記録が無い日は0kcalとして扱いません。";
+          "平均は全枠そろった日だけで計算しています。未記録の枠は0kcal（食べていない）として扱いません。";
       } catch (_) {
         $("history-hint").textContent = "履歴を読み込めませんでした。通信を確認して開き直してね。";
         toast("読み込めなかった");
@@ -3167,15 +3175,22 @@
 
     /** 記録がある日だけの平均（kcal・PFC）。0kcalの日を混ぜて薄めない。 */
     function renderAverages(days) {
-      var rec = days.filter(function (d) { return d.recorded > 0; });
-      var n = rec.length;
-      var sum = rec.reduce(function (a, d) {
+      // 平均に入れるのは「全枠そろった日」＝記録済み or 食べていない で埋まっていて、
+      // 未記録の枠が1つも無い日だけ。未記録が残る日は本当の合計が分からないので、
+      // 未記録を0kcalとして混ぜない（＝未記録を勝手に『食べていない』扱いにしない）。
+      // これをしないと、半分しか記録していない日が低い合計のまま平均を押し下げる。
+      var full = days.filter(function (d) { return d.recorded > 0 && d.unrecorded === 0; });
+      var n = full.length;
+      var sum = full.reduce(function (a, d) {
         a.kcal += d.totals.kcal; a.p += d.totals.p; a.c += d.totals.c; a.f += d.totals.f;
         return a;
       }, { kcal: 0, p: 0, c: 0, f: 0 });
       var avg = function (v) { return Math.round(v / n); };
-      $("avg-meta").textContent = n ? "記録 " + n + "日ぶんの平均" : "記録がまだありません";
-      // カロリー見出しの右にも平均kcalを出す
+      // 記録はあるが未記録の枠が残っている日（＝平均に入れられない日）の数
+      var partial = days.filter(function (d) { return d.recorded > 0 && d.unrecorded > 0; }).length;
+      $("avg-meta").textContent = n
+        ? "全枠そろった " + n + "日ぶん"
+        : (partial ? "全枠そろった日がまだないよ" : "記録がまだありません");
       $("bars-meta").textContent = n ? "平均 " + avg(sum.kcal).toLocaleString("en-US") + " kcal" : "";
       $("avg-tot").innerHTML = [
         ["kcal", n ? avg(sum.kcal).toLocaleString("en-US") : "—"],
@@ -3185,6 +3200,8 @@
       ].map(function (r) {
         return '<div class="totcell"><div class="k">' + r[0] + '</div><div class="v num">' + r[1] + "</div></div>";
       }).join("");
+      // 未記録が残る日があるなら、平均に入れる方法（食べてない枠を明示）を案内する
+      $("avg-note").hidden = partial === 0;
     }
 
     function renderHeat(days) {
@@ -3285,31 +3302,26 @@
       wrap.innerHTML = "";
       d.slots.forEach(function (sl) {
         var row = document.createElement("div");
-        var muted = sl.status !== "recorded";
-        // 記録済みの枠はタップして過去日の記録を直せる（振り返りから訂正）
-        row.className = "card dl-row" + (muted ? " muted" : " editable");
-        var label = sl.status === "recorded"
+        var rec = sl.status === "recorded";
+        // どの枠もタップで開ける。記録済み＝直す／未記録・食べていない＝その日に記録を追加する。
+        row.className = "card dl-row editable" + (rec ? "" : " muted");
+        var label = rec
           ? (sl.items || "記録済み")
           : (sl.status === "skipped" ? "食べていない" : "未記録");
         row.innerHTML =
           '<span class="dl-slot">' + sl.slot + "食目</span>" +
           '<span class="dl-body">' +
             '<span class="dl-items">' + esc(label) + "</span>" +
-            (sl.status === "recorded"
+            (rec
               ? '<span class="dl-macro num">P ' + sl.p + " ・ C " + sl.c + " ・ F " + sl.f + "</span>"
-              : "") +
+              : '<span class="dl-macro">タップで記録を追加</span>') +
           "</span>" +
-          (sl.status === "recorded"
-            ? '<span class="dl-kcal num">' + sl.kcal.toLocaleString("en-US") + "</span>" +
-              '<span class="dl-chev" aria-hidden="true">›</span>'
-            : "");
-        if (sl.status === "recorded") {
-          row.addEventListener("click", function () { openPastEdit(d, sl); });
-        }
+          (rec ? '<span class="dl-kcal num">' + sl.kcal.toLocaleString("en-US") + "</span>" : "") +
+          '<span class="dl-chev" aria-hidden="true">›</span>';
+        row.addEventListener("click", function () { openPastEdit(d, sl); });
         wrap.appendChild(row);
       });
-      // 記録がある日だけ「タップで直せる」を出す
-      $("edit-hint").hidden = d.recorded === 0;
+      $("edit-hint").hidden = false;
     }
 
     /**
@@ -3318,24 +3330,34 @@
      * 編集させる（マクロ素材対応済みなので、数値を直すか削除できる）。
      */
     function openPastEdit(d, sl) {
+      var rec = sl.status === "recorded";
       var preset;
-      if (sl.parts && sl.parts.length) {
+      if (rec && sl.parts && sl.parts.length) {
+        // 記録済み・内訳あり → 素材を復元して直す
         preset = sl.parts.map(function (pt) {
           return pt.code
             ? { code: pt.code, name: pt.name || "", grams: pt.grams }
             : { name: pt.name || "", kcal: pt.kcal, p: pt.p, c: pt.c, f: pt.f, grams: pt.grams || 0 };
         });
-      } else {
+      } else if (rec) {
+        // 記録済み・内訳なし（写真等） → 合計を1つのマクロ素材として直す
         preset = [{
           name: sl.items || (sl.slot + "食目の記録"),
           kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f, grams: sl.grams || 0
         }];
+      } else {
+        // 未記録・食べていない → 空のビルダーで、その日に新しく記録を追加する
+        preset = [];
       }
       var dp = dateParts(d.date);
       runBuilder(preset, sl.slot + "食目", {
         date: d.date,
         dateLabel: dp.m + "月" + dp.d + "日",
+        // 未記録は行が無いので base=null → サーバは insert。記録済み・食べていないは
+        // その版(updatedAt)を渡して update／楽観ロックを効かせる。
         base: sl.updatedAt || null,
+        // 既存の記録がある枠だけ「削除」を出す（未記録には消すものが無い）
+        hasRecord: rec,
         onSaved: afterHistoryEdit
       });
     }
