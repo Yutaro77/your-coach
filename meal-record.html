@@ -798,6 +798,9 @@
     flex-direction: column;
   }
   .screen.on { transform: translateY(0); }
+  /* 記録・解析の #screen は、履歴(#history)から開いたとき前面に来るよう一段上げる
+     （どちらも .screen で同じ重なり順だと、DOM後方の #history が上に来て隠れる）。 */
+  #screen { z-index: 72; }
 
   .screen-nav {
     display: flex;
@@ -1183,6 +1186,10 @@
   .dl-macro { font-size: 11px; color: var(--label-2); margin-top: 1px; }
   .dl-kcal { flex: none; font-size: 13px; font-weight: 700; }
   .dl-row.muted .dl-items { color: var(--label-3); font-weight: 500; }
+  /* 記録済みの枠はタップで過去日の記録を直せる（振り返りからの訂正） */
+  .dl-row.editable { cursor: pointer; }
+  .dl-row.editable:active { background: var(--fill); }
+  .dl-chev { flex: none; margin-left: -4px; font-size: 20px; line-height: 1; color: var(--label-3); font-weight: 400; }
 
   /* flex:none が無いと、縦フレックスの画面内で潰されて高さ0になる */
   .totrow { display: flex; gap: 1px; background: var(--separator); border-radius: 14px; overflow: hidden; flex: none; }
@@ -1457,7 +1464,7 @@
       </section>
 
       <div class="sec-head">
-        <h2 class="sec-title">この2週間</h2>
+        <h2 class="sec-title">この4週間</h2>
         <span class="sec-meta" id="heat-meta"></span>
       </div>
       <section class="card heat-card">
@@ -1482,12 +1489,19 @@
         <div class="bar-xs" id="bar-xs"></div>
       </section>
 
+      <div class="sec-head" style="padding-top:2px">
+        <h2 class="sec-title" style="font-size:15px">平均（記録した日）</h2>
+        <span class="sec-meta" id="avg-meta"></span>
+      </div>
+      <div class="totrow" id="avg-tot"></div>
+
       <div class="sec-head">
         <h2 class="sec-title" id="day-title">—</h2>
         <span class="sec-meta" id="day-meta"></span>
       </div>
       <div class="totrow" id="day-tot"></div>
       <div class="daylog" id="daylog"></div>
+      <p class="hint" id="edit-hint" style="text-align:left" hidden>記録済みの枠をタップすると、その日の記録を直したり削除できます。</p>
 
       <p class="hint" id="history-hint"></p>
     </div>
@@ -2527,11 +2541,14 @@
     // preset: 事前に積む素材。カタログ素材 {code,name,grams} と、マクロ直持ち素材
     // {name,kcal,p,c,f,grams}（手入力・写真・ラベル由来）の両方を受ける。
     // editSlot: 指定すると「内訳を編集」＝追記でなくその枠を置き換える（⑪）。
+    // editCtx: 履歴（振り返り）から過去日の記録を直すときに渡す
+    //   { date, dateLabel, base(=updatedAt), onSaved }。保存はその日付でサーバに送り、
+    //   今日の log は触らず onSaved で履歴を読み直す。未指定＝今日の記録（従来どおり）。
     // 編集時は preset のカタログ食品を成分表から引き直して per-100g 栄養を得る
     // （parts の絶対値からは量変更時に正しく再計算できないため）。マクロ素材は
     // 自分の値をそのまま持っているので引き直し不要。
-    function runBuilder(preset, editSlot) {
-      openScreen(editSlot ? "内訳を編集" : "素材から記録");
+    function runBuilder(preset, editSlot, editCtx) {
+      openScreen(editCtx ? (editCtx.dateLabel + "の記録を直す") : editSlot ? "内訳を編集" : "素材から記録");
       var picked = (preset || []).map(function (x) {
         return x.code
           ? { code: x.code, name: x.name, grams: x.grams }
@@ -2819,9 +2836,12 @@
 
       $("fd-manual").addEventListener("click", function () { openManual(); });
       $("fd-photo").addEventListener("click", function () { openPhotoChoice(); });
-      // 編集モードのみ：この記録ごと削除して未記録に戻す
+      // 編集モードのみ：この記録ごと削除して未記録に戻す（過去日は日付を明示して削除）
       if (editSlot) {
-        $("b-del").addEventListener("click", function () { deleteRecord(editSlot); });
+        $("b-del").addEventListener("click", function () {
+          if (editCtx) deletePastEdit();
+          else deleteRecord(editSlot);
+        });
       }
 
       function renderQty() {
@@ -2933,10 +2953,46 @@
           }),
           emoji: "🍽️", tint: ["#DFF3DC", "#93D18C"]
         };
-        // 編集はその枠を「置き換える」。新規記録は空き枠へ追記する。
-        if (editSlot) replaceSlot(editSlot, entry);
+        // 過去日の編集（履歴）はその日付で保存。今日の編集は枠を置き換え。新規は空き枠へ追記。
+        if (editCtx) savePastEdit(entry);
+        else if (editSlot) replaceSlot(editSlot, entry);
         else commit(entry);
       });
+
+      // 履歴からの過去日編集：日付を明示して保存し、成功したら履歴を読み直す。
+      // 今日の log には触らない（別の日なので）。楽観ロックは editCtx.base で効かせる。
+      function savePastEdit(entry) {
+        if (!online) { editCtx.onSaved("記録を更新したよ"); return; }
+        api("/liff/meal", {
+          method: "POST",
+          body: JSON.stringify({
+            date: editCtx.date, slot: slotNo(editSlot), status: "recorded",
+            items: entry.name, kcal: Math.round(entry.kcal), p: Math.round(entry.p),
+            c: Math.round(entry.c), f: Math.round(entry.f), grams: Math.round(entry.grams || 0),
+            parts: entry.parts, source: "liff-history-edit", baseUpdatedAt: editCtx.base
+          })
+        }).then(function () { editCtx.onSaved("記録を更新したよ"); })
+          .catch(function (e) {
+            if (e && e.conflict) { toast("他で記録が変わったみたい。最新にするね"); editCtx.onSaved(); }
+            else if (!(e && e.message === "subscription_required")) toast("更新できなかった。通信を確認してね");
+          });
+      }
+
+      function deletePastEdit() {
+        askConfirm(editCtx.dateLabel + "の" + editSlot + "の記録を削除しますか？", "削除する", function () {
+          if (!online) { editCtx.onSaved("記録を削除したよ"); return; }
+          api("/liff/meal", {
+            method: "POST",
+            body: JSON.stringify({
+              date: editCtx.date, slot: slotNo(editSlot), status: "unrecorded", baseUpdatedAt: editCtx.base
+            })
+          }).then(function () { editCtx.onSaved("記録を削除したよ"); })
+            .catch(function (e) {
+              if (e && e.conflict) { toast("他で記録が変わったみたい。最新にするね"); editCtx.onSaved(); }
+              else if (!(e && e.message === "subscription_required")) toast("削除できなかった。通信を確認してね");
+            });
+        });
+      }
 
       search("");        // 最初はよく使う食品を出す
       renderPicked();
@@ -3046,16 +3102,17 @@
     }
 
     // ------------------------------------------------------------
-    // 履歴（T11）
-    //   記録＝LINE / 振り返り＝LIFF の「振り返り」側。ここでは記録させない。
-    //   3値（記録済み・未記録・食べてない申告）を最後まで混ぜないのが要点。
+    // 履歴（T11）＝振り返り。カロリー推移・平均・ヒートマップ。
+    //   新規記録はしないが、記録済みの枠は**タップして過去日の訂正・削除**ができる
+    //   （サーバは検証付きバックデートのみ許可）。3値（記録済み・未記録・食べてない申告）を
+    //   最後まで混ぜないのが要点。
     // ------------------------------------------------------------
     var HIST = null;   // { perDay, days:[{date,slots,totals,recorded,unrecorded,skipped}], streak }
 
     /** 履歴の読み込み（履歴画面と候補リストで共用。1回だけ取ればいい）。 */
     async function loadHistory() {
       if (!online) return;
-      var data = await api("/liff/history?days=14", { method: "GET" });
+      var data = await api("/liff/history?days=28", { method: "GET" });
       HIST = data.meals;
       HIST.today = data.to;
     }
@@ -3104,13 +3161,36 @@
 
       renderHeat(days);
       renderBars(days);
+      renderAverages(days);
       selectDay(histSel);
+    }
+
+    /** 記録がある日だけの平均（kcal・PFC）。0kcalの日を混ぜて薄めない。 */
+    function renderAverages(days) {
+      var rec = days.filter(function (d) { return d.recorded > 0; });
+      var n = rec.length;
+      var sum = rec.reduce(function (a, d) {
+        a.kcal += d.totals.kcal; a.p += d.totals.p; a.c += d.totals.c; a.f += d.totals.f;
+        return a;
+      }, { kcal: 0, p: 0, c: 0, f: 0 });
+      var avg = function (v) { return Math.round(v / n); };
+      $("avg-meta").textContent = n ? "記録 " + n + "日ぶんの平均" : "記録がまだありません";
+      // カロリー見出しの右にも平均kcalを出す
+      $("bars-meta").textContent = n ? "平均 " + avg(sum.kcal).toLocaleString("en-US") + " kcal" : "";
+      $("avg-tot").innerHTML = [
+        ["kcal", n ? avg(sum.kcal).toLocaleString("en-US") : "—"],
+        ["P", n ? avg(sum.p) + "g" : "—"],
+        ["C", n ? avg(sum.c) + "g" : "—"],
+        ["F", n ? avg(sum.f) + "g" : "—"]
+      ].map(function (r) {
+        return '<div class="totcell"><div class="k">' + r[0] + '</div><div class="v num">' + r[1] + "</div></div>";
+      }).join("");
     }
 
     function renderHeat(days) {
       var wrap = $("heat");
       wrap.innerHTML = "";
-      // 曜日の見出しは先頭7日から作って1行だけ出す（14日は必ず同じ曜日の並びになる）
+      // 曜日の見出しは先頭7日から作って1行だけ出す（28日＝4週なので同じ曜日で列が揃う）
       days.slice(0, 7).forEach(function (d) {
         var h = document.createElement("div");
         h.className = "heat-wd";
@@ -3206,7 +3286,8 @@
       d.slots.forEach(function (sl) {
         var row = document.createElement("div");
         var muted = sl.status !== "recorded";
-        row.className = "card dl-row" + (muted ? " muted" : "");
+        // 記録済みの枠はタップして過去日の記録を直せる（振り返りから訂正）
+        row.className = "card dl-row" + (muted ? " muted" : " editable");
         var label = sl.status === "recorded"
           ? (sl.items || "記録済み")
           : (sl.status === "skipped" ? "食べていない" : "未記録");
@@ -3219,9 +3300,53 @@
               : "") +
           "</span>" +
           (sl.status === "recorded"
-            ? '<span class="dl-kcal num">' + sl.kcal.toLocaleString("en-US") + "</span>"
+            ? '<span class="dl-kcal num">' + sl.kcal.toLocaleString("en-US") + "</span>" +
+              '<span class="dl-chev" aria-hidden="true">›</span>'
             : "");
+        if (sl.status === "recorded") {
+          row.addEventListener("click", function () { openPastEdit(d, sl); });
+        }
         wrap.appendChild(row);
+      });
+      // 記録がある日だけ「タップで直せる」を出す
+      $("edit-hint").hidden = d.recorded === 0;
+    }
+
+    /**
+     * 履歴（振り返り）から過去日の記録を直す。素材ビルダーを日付指定モードで開く。
+     * 内訳（素材）があればそれを、無い記録（写真・ラベル等）は合計を1つのマクロ素材として
+     * 編集させる（マクロ素材対応済みなので、数値を直すか削除できる）。
+     */
+    function openPastEdit(d, sl) {
+      var preset;
+      if (sl.parts && sl.parts.length) {
+        preset = sl.parts.map(function (pt) {
+          return pt.code
+            ? { code: pt.code, name: pt.name || "", grams: pt.grams }
+            : { name: pt.name || "", kcal: pt.kcal, p: pt.p, c: pt.c, f: pt.f, grams: pt.grams || 0 };
+        });
+      } else {
+        preset = [{
+          name: sl.items || (sl.slot + "食目の記録"),
+          kcal: sl.kcal, p: sl.p, c: sl.c, f: sl.f, grams: sl.grams || 0
+        }];
+      }
+      var dp = dateParts(d.date);
+      runBuilder(preset, sl.slot + "食目", {
+        date: d.date,
+        dateLabel: dp.m + "月" + dp.d + "日",
+        base: sl.updatedAt || null,
+        onSaved: afterHistoryEdit
+      });
+    }
+
+    /** 過去日の編集後：ビルダーを閉じ、履歴を読み直して反映する。 */
+    function afterHistoryEdit(msg) {
+      closeScreen();
+      if (msg) toast(msg);
+      if (!online) { renderHistory(); return; }   // デモは手元データのまま再描画
+      loadHistory().then(function () { renderHistory(); }).catch(function () {
+        toast("最新の取得に失敗。開き直してね");
       });
     }
 
@@ -3237,7 +3362,7 @@
       var per = MEALS_PER_DAY || 4;
       var days = [];
       var base = new Date();
-      for (var i = 13; i >= 0; i--) {
+      for (var i = 27; i >= 0; i--) {
         var dt = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i);
         var date = dt.getFullYear() + "-" +
           String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
@@ -3252,7 +3377,8 @@
               slot: s, status: "recorded",
               items: ["鶏むねと白米", "オートミールとプロテイン", "サーモン丼", "卵かけご飯と味噌汁"][(s + i) % 4],
               kcal: 420 + ((i * 37 + s * 53) % 260), p: 28 + (s * 3 + i) % 14,
-              c: 45 + (i * 5 + s) % 30, f: 9 + (i + s) % 8, grams: 250 + (i * 13 + s * 7) % 150
+              c: 45 + (i * 5 + s) % 30, f: 9 + (i + s) % 8, grams: 250 + (i * 13 + s * 7) % 150,
+              updatedAt: date + "T00:00:00.000Z"
             });
           } else {
             slots.push({
