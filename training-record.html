@@ -360,6 +360,10 @@
   .set-w { flex: 1; font-weight: 600; letter-spacing: -0.01em; }
   .set-rir { flex: none; font-size: 11px; font-weight: 600; color: var(--label-2);
              background: var(--fill); padding: 3px 8px; border-radius: 6px; }
+  /* タップして直せる（記録ミスの修正）。›で示す */
+  .set-row.editable { cursor: pointer; }
+  .set-row.editable:active { background: var(--fill); }
+  .set-chev { flex: none; margin-left: -2px; font-size: 18px; line-height: 1; color: var(--label-3); font-weight: 400; }
 
   .s-foot { flex: none; padding: 12px 20px calc(18px + env(safe-area-inset-bottom)); }
   .done-btn {
@@ -447,6 +451,30 @@
     background: var(--blue); color: #fff; font-size: 16px; font-weight: 700;
   }
   .primary-btn:active { opacity: 0.9; }
+  .danger-btn {
+    width: 100%; margin-top: 8px; padding: 14px; border-radius: 13px;
+    background: color-mix(in srgb, var(--red) 10%, transparent);
+    color: var(--red); font-size: 15px; font-weight: 600;
+  }
+  .danger-btn:active { opacity: 0.7; }
+
+  /* ---------------- セットの訂正シート（完了済み・保存済みどちらも共通） ---------------- */
+  .eset-sub { text-align: center; font-size: 12px; color: var(--label-2); margin-top: 4px; margin-bottom: 16px; }
+  .eset-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .eset-row label { font-size: 14px; font-weight: 600; color: var(--label-2); }
+  .eset-in {
+    width: 96px; padding: 10px 12px; border: 0; border-radius: 11px;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font: inherit; font-size: 17px; font-weight: 700; color: var(--label); text-align: right;
+  }
+  .eset-in:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .eset-rir-chips { display: flex; gap: 6px; margin: 4px 0 16px; }
+  .eset-chip {
+    flex: 1; padding: 10px 4px; border-radius: 11px; text-align: center;
+    background: var(--card-elevated); box-shadow: 0 0 0 0.5px var(--separator);
+    font-size: 12px; font-weight: 700; color: var(--label-2);
+  }
+  .eset-chip.on { background: var(--blue); color: #fff; box-shadow: none; }
 
   /* ---------------- サマリー ---------------- */
   .sum-grid {
@@ -566,6 +594,9 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .sess-meta { font-size: 11px; color: var(--label-2); margin-top: 1px; }
+  /* タップしてその日のセットを直せる（保存済みの記録ミス修正） */
+  .sess-row.editable { cursor: pointer; }
+  .sess-row.editable:active { background: var(--fill); }
 
   #trend-list { display: flex; flex-direction: column; gap: 8px; }
   .trend-card { padding: 12px 14px 10px; }
@@ -948,18 +979,60 @@
     var online = false;
     var idToken = null;
 
-    async function api(path, options) {
-      var res = await fetch(API_BASE + path, Object.assign({
+    /**
+     * idToken を再取得できるか試す。LINEのWebViewは開きっぱなしで長時間保持されるため、
+     * ページを開いたときに1回だけ取った idToken は時間が経つと失効しうる（401の原因）。
+     * liff.getIDToken() を呼び直すだけで新しい値が取れることがあるので、まずそれを試す。
+     */
+    async function refreshIdToken() {
+      try {
+        if (typeof liff === "undefined" || !liff.isLoggedIn || !liff.isLoggedIn()) return false;
+        var fresh = liff.getIDToken();
+        if (fresh && fresh !== idToken) { idToken = fresh; return true; }
+        return false;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    /**
+     * 401（idToken失効）は握りつぶさず再取得→1回だけ再試行する。それでも401なら
+     * 呼び出し側が「ログイン切れ」と判別できるよう印(unauthorized)を付けて投げる。
+     */
+    /**
+     * 通信が固まって永久に応答が返らないと、画面は「無反応のまま」に見えてしまう。
+     * 一定時間で必ず失敗させ、catch側でエラーメッセージを出せるようにする。
+     */
+    var API_TIMEOUT_MS = 12000;
+    function fetchWithTimeout(url, options) {
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var opts = Object.assign({}, options);
+      if (ctrl) opts.signal = ctrl.signal;
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, API_TIMEOUT_MS) : null;
+      return fetch(url, opts).finally(function () { if (timer) clearTimeout(timer); });
+    }
+
+    async function api(path, options, retried) {
+      var res = await fetchWithTimeout(API_BASE + path, Object.assign({
         headers: {
           "content-type": "application/json",
           "authorization": "Bearer " + idToken,
         },
       }, options || {}));
+      if (res.status === 401 && !retried) {
+        var refreshed = await refreshIdToken();
+        if (refreshed) return api(path, options, true);
+      }
       // 402 = 課金・無料期間で書き込みが止められている（G）。
       // 呼び出し側の汎用catchに任せると原因が伝わらないので、ここで理由を知らせる。
       if (res.status === 402) {
         toast("無料期間が終わったみたい。LINEのトークから登録してね");
         throw new Error("subscription_required");
+      }
+      if (res.status === 401) {
+        var unauth = new Error("unauthorized");
+        unauth.unauthorized = true;
+        throw unauth;
       }
       if (!res.ok) throw new Error("api " + path + " -> " + res.status);
       return res.json();
@@ -1174,6 +1247,12 @@
           { date: "2026-07-17", e1rmKg: 108, topWeightKg: 90 }
         ] }
       ];
+      // セッション詳細（タップして直す画面）のデモ用。id はデモ内だけで一意ならよい。
+      lastLogs = [
+        { id: 1, date: "2026-07-20", exercise: "ベンチプレス", setNo: 1, weightKg: 70, reps: 8, rir: 2 },
+        { id: 2, date: "2026-07-20", exercise: "ベンチプレス", setNo: 2, weightKg: 70, reps: 7, rir: 1 },
+        { id: 3, date: "2026-07-17", exercise: "スクワット", setNo: 1, weightKg: 90, reps: 6, rir: 2 }
+      ];
     }
 
     var logs = []; // { exercise, setNo, weight, reps, rir }
@@ -1363,19 +1442,89 @@
       $("r-down").disabled = reps <= 1;
     }
 
+    // 「完了済みセット」は今の種目ぶんだけを出す。別の種目に進んだ後は表示から外れるが、
+    // それでも保存前に打ち間違いに気づいたときはここでその場で直せる。
+    // 種目を跨いだ過去のセット・保存後のセットは履歴画面（openEditSavedSet系）で直す。
     function renderDoneSets() {
       var wrap = $("done-sets");
       wrap.innerHTML = "";
       setsOf(curEx().name).forEach(function (s, i) {
         var row = document.createElement("div");
-        row.className = "set-row";
+        row.className = "set-row editable";
         var opt = RIR_OPTIONS.find(function (o) { return o.rir === s.rir; });
         row.innerHTML =
           '<span class="set-n">' + (i + 1) + "</span>" +
           '<span class="set-w num">' + fmtKg(s.weight) + "kg × " + s.reps + "回</span>" +
-          '<span class="set-rir">' + (opt ? opt.label : "") + "</span>";
+          '<span class="set-rir">' + (opt ? opt.label : "") + "</span>" +
+          '<span class="set-chev" aria-hidden="true">›</span>';
+        // logs は setsOf() が filter で返した同じ参照なので、indexOf で本来の位置が分かる
+        row.addEventListener("click", function () { openEditSetSheet(logs.indexOf(s)); });
         wrap.appendChild(row);
       });
+    }
+
+    /** 保存前（このセッション中）のセットを直す・削除するシート。 */
+    function openEditSetSheet(idx) {
+      var s = logs[idx];
+      if (!s) return;
+      var w = s.weight, r = s.reps, rir = s.rir;
+
+      function paintEdit() {
+        $("sheet-inner").innerHTML =
+          '<div class="rir-q">セットを直す</div>' +
+          '<div class="eset-sub">' + esc(s.exercise) + "</div>" +
+          '<div class="eset-row"><label>重量(kg)</label>' +
+            '<input class="eset-in num" id="es-w" type="number" inputmode="decimal" step="0.5" value="' +
+            fmtKg(w) + '"></div>' +
+          '<div class="eset-row"><label>回数</label>' +
+            '<input class="eset-in num" id="es-r" type="number" inputmode="numeric" value="' + r + '"></div>' +
+          '<div class="eset-row"><label>あと何回できそう？</label></div>' +
+          '<div class="eset-rir-chips" id="es-rir">' +
+            RIR_OPTIONS.map(function (o) {
+              return '<button class="eset-chip' + (o.rir === rir ? " on" : "") + '" data-rir="' + o.rir + '">' +
+                (o.rir === 3 ? "3+" : o.rir) + "</button>";
+            }).join("") +
+          "</div>" +
+          '<button class="primary-btn" id="es-save" style="width:100%">保存</button>' +
+          '<button class="danger-btn" id="es-del">このセットを削除</button>';
+
+        $("es-w").addEventListener("change", function () {
+          var v = parseFloat(this.value);
+          if (isFinite(v) && v > 0) w = Math.min(999, Math.round(v * 100) / 100);
+          this.value = fmtKg(w);
+        });
+        $("es-r").addEventListener("change", function () {
+          var v = parseInt(this.value, 10);
+          if (isFinite(v) && v > 0) r = Math.min(50, v);
+          this.value = String(r);
+        });
+        $("es-rir").addEventListener("click", function (ev) {
+          var b = ev.target.closest("[data-rir]");
+          if (!b) return;
+          rir = Number(b.dataset.rir);
+          Array.prototype.forEach.call($("es-rir").children, function (c) {
+            c.classList.toggle("on", Number(c.dataset.rir) === rir);
+          });
+        });
+        $("es-save").addEventListener("click", function () {
+          logs[idx].weight = w;
+          logs[idx].reps = r;
+          logs[idx].rir = rir;
+          closeSheet();
+          renderDoneSets();
+          toast("セットを直したよ");
+        });
+        $("es-del").addEventListener("click", function () {
+          logs.splice(idx, 1);
+          closeSheet();
+          // 削除でセット数がずれるので、現在の setNo を記録数から再計算してから描き直す
+          setNo = Math.min(setsOf(curEx().name).length + 1, curEx().sets);
+          loadCurrent();
+          toast("セットを削除したよ");
+        });
+      }
+      paintEdit();
+      openSheet(true);
     }
 
     $("w-up").addEventListener("click", function () { weight += curEx().step; paint(); });
@@ -1685,7 +1834,12 @@
             if (progression[u.exercise]) progression[u.exercise].weight = u.weightKg;
           });
         })
-        .catch(function () { toast("保存できなかった。通信を確認してね"); });
+        .catch(function (e) {
+          // ログイン切れ(401)を「保存できなかった」に埋もれさせない（api()は1回自動再試行済み）
+          toast(e && e.unauthorized
+            ? "ログインが切れたみたい。アプリを閉じて、LINEのトークから開き直してね。"
+            : "保存できなかった。通信を確認してね");
+        });
     }
 
     $("close-summary").addEventListener("click", function () {
@@ -1823,7 +1977,7 @@
         var d = s.date.split("-");
         var wd = WD[new Date(Number(d[0]), Number(d[1]) - 1, Number(d[2])).getDay()];
         var row = document.createElement("div");
-        row.className = "card sess-row";
+        row.className = "card sess-row editable";
         row.innerHTML =
           '<span class="sess-date num">' + Number(d[1]) + "/" + Number(d[2]) +
             '<br><span class="sess-wd">' + wd + "</span></span>" +
@@ -1831,9 +1985,128 @@
             '<span class="sess-ex">' + s.exercises.join("・") + "</span>" +
             '<span class="sess-meta num">' + s.sets + "セット ／ " +
             Math.round(s.volumeKg).toLocaleString("en-US") + "kg</span>" +
-          "</span>";
+          "</span>" +
+          '<span class="set-chev" aria-hidden="true">›</span>';
+        // タップして、その日に記録した重量・回数を直す・削除する（保存後の訂正）
+        row.addEventListener("click", function () { openSessionDetail(s.date); });
         wrap.appendChild(row);
       });
+    }
+
+    /** 保存済みの1日ぶんのセットを一覧し、タップして直す・削除する。 */
+    function openSessionDetail(date) {
+      var sets = lastLogs
+        .filter(function (l) { return l.date === date; })
+        .sort(function (a, b) {
+          return a.exercise === b.exercise ? a.setNo - b.setNo : (a.exercise < b.exercise ? -1 : 1);
+        });
+      var d = date.split("-");
+
+      var html = '<div class="rir-q">' + Number(d[1]) + "/" + Number(d[2]) + "の記録</div>" +
+        '<div class="eset-sub">タップして直せるよ</div>' +
+        '<div class="sets" style="margin-top:0">';
+      if (!sets.length) {
+        html += '<p class="hint">この日の記録は見当たらないよ。</p>';
+      } else {
+        sets.forEach(function (l) {
+          var opt = RIR_OPTIONS.find(function (o) { return o.rir === l.rir; });
+          html += '<div class="set-row editable" data-id="' + l.id + '">' +
+            '<span class="set-n">' + l.setNo + "</span>" +
+            '<span class="set-w num">' + esc(l.exercise) + " " + fmtKg(l.weightKg) + "kg × " + l.reps + "回</span>" +
+            '<span class="set-rir">' + (opt ? opt.label : "") + "</span>" +
+            '<span class="set-chev" aria-hidden="true">›</span>' +
+            "</div>";
+        });
+      }
+      html += "</div>";
+      $("sheet-inner").innerHTML = html;
+      $("sheet-inner").querySelectorAll("[data-id]").forEach(function (row) {
+        row.addEventListener("click", function () {
+          var log = sets.find(function (l) { return String(l.id) === row.dataset.id; });
+          if (log) openEditSavedSetSheet(log);
+        });
+      });
+      openSheet(true);
+    }
+
+    /** 保存済み1セットを直す・削除するシート。サーバに直接反映し、履歴を読み直す。 */
+    function openEditSavedSetSheet(log) {
+      var w = log.weightKg, r = log.reps, rir = log.rir;
+      var busy = false;
+
+      function fail(e, fallback) {
+        busy = false;
+        toast(e && e.unauthorized
+          ? "ログインが切れたみたい。アプリを閉じて、LINEのトークから開き直してね。"
+          : fallback);
+      }
+
+      function paintEdit() {
+        $("sheet-inner").innerHTML =
+          '<div class="rir-q">セットを直す</div>' +
+          '<div class="eset-sub">' + esc(log.exercise) + " ・ " + log.setNo + "セット目</div>" +
+          '<div class="eset-row"><label>重量(kg)</label>' +
+            '<input class="eset-in num" id="es-w" type="number" inputmode="decimal" step="0.5" value="' +
+            fmtKg(w) + '"></div>' +
+          '<div class="eset-row"><label>回数</label>' +
+            '<input class="eset-in num" id="es-r" type="number" inputmode="numeric" value="' + r + '"></div>' +
+          '<div class="eset-row"><label>あと何回できそう？</label></div>' +
+          '<div class="eset-rir-chips" id="es-rir">' +
+            RIR_OPTIONS.map(function (o) {
+              return '<button class="eset-chip' + (o.rir === rir ? " on" : "") + '" data-rir="' + o.rir + '">' +
+                (o.rir === 3 ? "3+" : o.rir) + "</button>";
+            }).join("") +
+          "</div>" +
+          '<button class="primary-btn" id="es-save" style="width:100%">保存</button>' +
+          '<button class="danger-btn" id="es-del">このセットを削除</button>';
+
+        $("es-w").addEventListener("change", function () {
+          var v = parseFloat(this.value);
+          if (isFinite(v) && v > 0) w = Math.min(999, Math.round(v * 100) / 100);
+          this.value = fmtKg(w);
+        });
+        $("es-r").addEventListener("change", function () {
+          var v = parseInt(this.value, 10);
+          if (isFinite(v) && v > 0) r = Math.min(50, v);
+          this.value = String(r);
+        });
+        $("es-rir").addEventListener("click", function (ev) {
+          var b = ev.target.closest("[data-rir]");
+          if (!b) return;
+          rir = Number(b.dataset.rir);
+          Array.prototype.forEach.call($("es-rir").children, function (c) {
+            c.classList.toggle("on", Number(c.dataset.rir) === rir);
+          });
+        });
+        $("es-save").addEventListener("click", function () {
+          if (busy) return;
+          if (!online) { closeSheet(); toast("デモでは保存できないよ"); return; }
+          busy = true;
+          api("/liff/workout/log", {
+            method: "POST",
+            body: JSON.stringify({ id: log.id, action: "update", weightKg: w, reps: r, rir: rir }),
+          }).then(function () {
+            closeSheet();
+            toast("セットを直したよ");
+            return reloadHistoryData();
+          }).catch(function (e) { fail(e, "更新できなかった。通信を確認してね"); });
+        });
+        $("es-del").addEventListener("click", function () {
+          if (busy) return;
+          if (!online) { closeSheet(); toast("デモでは削除できないよ"); return; }
+          busy = true;
+          api("/liff/workout/log", {
+            method: "POST",
+            body: JSON.stringify({ id: log.id, action: "delete" }),
+          }).then(function () {
+            closeSheet();
+            toast("セットを削除したよ");
+            return reloadHistoryData();
+          }).catch(function (e) { fail(e, "削除できなかった。通信を確認してね"); });
+        });
+      }
+      paintEdit();
+      openSheet(true);
     }
 
     function renderHistoryScreen(sessions) {
@@ -1910,6 +2183,24 @@
 
     var lastSessions = [];
     var lastTrends = [];
+    var lastLogs = [];   // 生ログ（id付き）。セッション詳細のタップ編集に使う。
+
+    /** 履歴データを取り直して再描画する。編集・削除の直後にも呼ぶ（最新を必ず見せる）。 */
+    async function reloadHistoryData() {
+      if (!online) return;
+      try {
+        // 成長の推移を見るには2週間では短いので90日ぶん取る（疲労・回復の計算は
+        // サーバ側で直近だけを見るので、期間を広げても着色は変わらない）。
+        var data = await api("/liff/history?days=90", { method: "GET" });
+        muscleStates = data.training.muscles || [];
+        lastSessions = data.training.sessions || [];
+        lastTrends = data.training.trends || [];
+        lastLogs = data.training.logs || [];
+        renderHistoryScreen(lastSessions);
+      } catch (_) {
+        toast("読み込めなかった");
+      }
+    }
 
     $("history-btn").addEventListener("click", async function () {
       $("history").classList.add("on");
@@ -1918,17 +2209,7 @@
         $("history-hint").textContent = "デモデータを表示しています。実際の記録ではありません。";
         return;
       }
-      try {
-        // 成長の推移を見るには2週間では短いので90日ぶん取る（疲労・回復の計算は
-        // サーバ側で直近だけを見るので、期間を広げても着色は変わらない）。
-        var data = await api("/liff/history?days=90", { method: "GET" });
-        muscleStates = data.training.muscles || [];
-        lastSessions = data.training.sessions || [];
-        lastTrends = data.training.trends || [];
-        renderHistoryScreen(lastSessions);
-      } catch (_) {
-        toast("読み込めなかった");
-      }
+      await reloadHistoryData();
     });
     $("history-back").addEventListener("click", function () {
       $("history").classList.remove("on");
