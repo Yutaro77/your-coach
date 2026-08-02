@@ -1548,13 +1548,40 @@
     var online = false;
     var idToken = null;
 
-    async function api(path, options) {
+    /**
+     * idToken を再取得できるか試す。LINEのWebViewは開きっぱなしで長時間保持されるため、
+     * ページを開いたときに1回だけ取った idToken は時間が経つと失効しうる（401の原因）。
+     * liff.getIDToken() を呼び直すだけで新しい値が取れることがあるので、まずそれを試す。
+     * 変わらなければ本当にログインが切れている＝これ以上は自動回復できない。
+     */
+    async function refreshIdToken() {
+      try {
+        if (typeof liff === "undefined" || !liff.isLoggedIn || !liff.isLoggedIn()) return false;
+        var fresh = liff.getIDToken();
+        if (fresh && fresh !== idToken) { idToken = fresh; return true; }
+        return false;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    /**
+     * 401（idToken失効）は**握りつぶさず**再取得→1回だけ再試行する。それでも401なら
+     * 呼び出し側が「検索0件」等と誤読しないよう、区別できる印(unauthorized)を付けて投げる。
+     * これが無いと、失効を「該当なし」「保存できない」としか出せず原因が伝わらない
+     * （実機で「卵を検索しても出てこない」「編集できない」の主因だった）。
+     */
+    async function api(path, options, retried) {
       var res = await fetch(API_BASE + path, Object.assign({
         headers: {
           "content-type": "application/json",
           "authorization": "Bearer " + idToken,
         },
       }, options || {}));
+      if (res.status === 401 && !retried) {
+        var refreshed = await refreshIdToken();
+        if (refreshed) return api(path, options, true);
+      }
       // 402 = 課金・無料期間で書き込みが止められている（G）。
       // 呼び出し側の汎用catchに任せると「保存できなかった。通信を確認してね」と出て
       // 原因が伝わらないので、ここで理由をそのまま知らせる。
@@ -1566,6 +1593,11 @@
         var conflict = new Error("conflict");
         conflict.conflict = true;   // 呼び出し側が「他で変わった」と判別できるように
         throw conflict;
+      }
+      if (res.status === 401) {
+        var unauth = new Error("unauthorized");
+        unauth.unauthorized = true; // 呼び出し側が「ログイン切れ」と判別できるように
+        throw unauth;
       }
       if (!res.ok) throw new Error("api " + path + " -> " + res.status);
       return res.json();
@@ -1894,6 +1926,20 @@
       toastTimer = setTimeout(function () { el.classList.remove("on"); }, 1900);
     }
 
+    /**
+     * api() の失敗を画面向けの文言にする。ログイン切れ(401)は「保存できなかった」
+     * のような一般的な文言に埋もれさせない（原因が伝わらないと直しようがないため）。
+     * fallback は 409(conflict)・402(subscription) 以外の一般失敗のときの文言。
+     */
+    function toastApiError(e, fallback) {
+      if (e && e.unauthorized) {
+        toast("ログインが切れたみたい。アプリを閉じて、LINEのトークから開き直してね。");
+        return;
+      }
+      if (e && e.message === "subscription_required") return; // api() 側で既にtoast済み
+      toast(fallback);
+    }
+
     // ------------------------------------------------------------
     // 確認ダイアログ（削除など取り返しのつかない操作の前に一拍おく）
     // ------------------------------------------------------------
@@ -2040,7 +2086,7 @@
         paintMpd();
         toast("1日" + MEALS_PER_DAY + "食にしたよ");
       } catch (e) {
-        if (!(e && e.message === "subscription_required")) toast("変更できなかった");
+        toastApiError(e, "変更できなかった");
         paintMpd();
       } finally { mpdBusy = false; }
     }
@@ -2063,7 +2109,7 @@
             reload();
             return;
           }
-          toast("保存できなかった。通信を確認してね");
+          toastApiError(e, "保存できなかった。通信を確認してね");
         });
     }
 
@@ -2563,6 +2609,10 @@
       var sel = null;      // 量を入力中のカタログ食品
       var selGrams = 100;
       var searchTimer = null;
+      // 検索が失敗したときの理由（"unauthorized"|"network"|null）。
+      // 「該当なし」と「通信/認証で失敗」を画面上でも区別するため（区別しないと
+      // ログイン切れが「その食品は無い」に見えてしまう＝実機バグの主因だった）。
+      var searchError = null;
 
       $("screen-body").innerHTML =
         '<input class="fd-search" id="fd-q" placeholder="食材で検索（例：鶏むね、ごはん）" autocomplete="off">' +
@@ -2900,10 +2950,24 @@
         var wrap = $("fd-list");
         wrap.innerHTML = "";
         if (!results.length) {
-          wrap.innerHTML = '<p class="hint" style="text-align:left">' +
-            (online
-              ? "見つかりませんでした。別の言い方で探してみて（例：とりむね、白米）。"
-              : "デモでは3件だけ検索できます。") + "</p>";
+          // 「本当に該当が無い」と「検索できなかった（ログイン切れ・通信）」を
+          // 混同させない。区別しないと失効が「その食品は無い」に見えてしまう。
+          var msg = searchError === "unauthorized"
+            ? "ログインが切れたみたい。アプリを閉じて、LINEのトークから開き直してね。"
+            : searchError === "network"
+            ? "検索できなかった。通信を確認してもう一度試してね。"
+            : online
+            ? "見つかりませんでした。別の言い方で探してみて（例：とりむね、白米）。"
+            : "デモでは3件だけ検索できます。";
+          wrap.innerHTML = '<p class="hint" style="text-align:left">' + msg + "</p>";
+          if (searchError) {
+            var retry = document.createElement("button");
+            retry.className = "fd-src-btn";
+            retry.style.marginTop = "8px";
+            retry.textContent = "もう一度試す";
+            retry.addEventListener("click", function () { search($("fd-q").value); });
+            wrap.appendChild(retry);
+          }
           return;
         }
         results.slice(0, 12).forEach(function (f) {
@@ -2922,6 +2986,7 @@
       }
 
       async function search(q) {
+        searchError = null;
         if (!online) {
           results = FOOD_DEMO.filter(function (f) { return !q || f.label.indexOf(q) >= 0; });
           renderList();
@@ -2930,7 +2995,10 @@
         try {
           var data = await api("/liff/foods?q=" + encodeURIComponent(q), { method: "GET" });
           results = data.items || [];
-        } catch (_) { results = []; }
+        } catch (e) {
+          results = [];
+          searchError = (e && e.unauthorized) ? "unauthorized" : "network";
+        }
         renderList();
       }
 
@@ -2982,7 +3050,7 @@
         }).then(function () { editCtx.onSaved("記録を更新したよ"); })
           .catch(function (e) {
             if (e && e.conflict) { toast("他で記録が変わったみたい。最新にするね"); editCtx.onSaved(); }
-            else if (!(e && e.message === "subscription_required")) toast("更新できなかった。通信を確認してね");
+            else toastApiError(e, "更新できなかった。通信を確認してね");
           });
       }
 
@@ -2997,7 +3065,7 @@
           }).then(function () { editCtx.onSaved("記録を削除したよ"); })
             .catch(function (e) {
               if (e && e.conflict) { toast("他で記録が変わったみたい。最新にするね"); editCtx.onSaved(); }
-              else if (!(e && e.message === "subscription_required")) toast("削除できなかった。通信を確認してね");
+              else toastApiError(e, "削除できなかった。通信を確認してね");
             });
         });
       }
