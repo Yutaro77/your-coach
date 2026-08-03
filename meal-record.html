@@ -384,7 +384,15 @@
   }
   .fd-search:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-  .fd-list { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+  .fd-list {
+    display: flex; flex-direction: column; gap: 6px;
+    /* vh はキーボード表示中も「キーボード無し」の高さ基準のままになりがちで、
+       検索結果が実質1件しか見えなくなる。dvh（対応ブラウザ）はキーボード分を
+       差し引いた実際の表示高さに追従するので、対応環境ではこちらを優先する。 */
+    max-height: 44vh;
+    max-height: 44dvh;
+    overflow-y: auto;
+  }
   .fd-row {
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 11px 13px; border-radius: 12px;
@@ -392,8 +400,11 @@
     text-align: left;
   }
   .fd-row:active { background: var(--fill); }
-  .fd-name { flex: 1; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-  .fd-kcal { flex: none; font-size: 11px; color: var(--label-2); }
+  .fd-name {
+    flex: 1; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fd-kcal { flex: none; font-size: 11px; color: var(--label-2); white-space: nowrap; }
 
   /* 選んだ素材の量を決める段 */
   .fd-qty { padding: 12px 13px; border-radius: 12px; background: var(--fill); margin-top: 8px; }
