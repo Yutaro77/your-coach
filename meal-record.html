@@ -641,6 +641,18 @@
   .meal-kcal b { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
   .meal-kcal span { font-size: 10px; color: var(--label-3); font-weight: 600; }
 
+  /* 記録済みの行に常時出す「＋追加」。タップしないと追加できると気づけない、を無くす。 */
+  .meal-add {
+    flex: none;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--fill);
+    color: var(--blue);
+    margin-left: 2px;
+  }
+  .meal-add:active { background: color-mix(in srgb, var(--blue) 16%, var(--fill)); }
+
   /* Repeat / quick add */
   .quick {
     display: flex;
@@ -1845,14 +1857,20 @@
       'stroke-linecap="round"/></svg>';
 
     /** 記録済みの枠。1枠に複数記録がある場合はまとめて1枚に見せる。 */
+    // 記録済みの行は「タップして直す」に加えて、常時見える「＋追加」ボタンを持つ。
+    // タップして初めて追加できると気づく、という発見しにくさを無くすため（実機フィードバック）。
+    // ＋ボタンは入れ子の <button> なので、行そのものは <button> ではなく role="button" の
+    // <div> にする（button の中に button は置けない）。
     function recordedNode(s, isNew) {
       var t = slotTotals(s);
       var es = log[s].entries;
       var head = es[0];
       var items = es.map(function (e) { return e.items; }).join("・");
-      var b = document.createElement("button");
+      var b = document.createElement("div");
       b.className = "card meal" + (isNew ? " enter" : "");
       b.dataset.slot = s;
+      b.setAttribute("role", "button");
+      b.setAttribute("tabindex", "0");
       b.innerHTML =
         '<span class="thumb" style="' + tint(head.tint) + '">' + head.emoji + "</span>" +
         '<span class="meal-body">' +
@@ -1864,7 +1882,15 @@
             '<span class="macro m-f num">F ' + fmt(t.f) + "</span>" +
           "</span>" +
         "</span>" +
-        '<span class="meal-kcal"><b class="num">' + fmt(t.kcal) + "</b><span>KCAL</span></span>";
+        '<span class="meal-kcal"><b class="num">' + fmt(t.kcal) + "</b><span>KCAL</span></span>" +
+        '<button class="meal-add" aria-label="' + s + 'に追加する">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+          '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>' +
+        "</button>";
+      b.querySelector(".meal-add").addEventListener("click", function (e) {
+        e.stopPropagation();  // 行本体のタップ（編集を開く）を二重発火させない
+        openAddToSlot(s);
+      });
       return b;
     }
 
@@ -2029,11 +2055,11 @@
     $("scrim").addEventListener("click", function () { setSheet(false); });
     $("sheet-cancel").addEventListener("click", function () { setSheet(false); });
 
-    // 枠をタップ → 記録済みで内訳があれば「内訳を編集」、それ以外は記録シート。
-    $("timeline").addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-slot]");
-      if (!btn) return;
-      var s = btn.dataset.slot;
+    /**
+     * その枠に素材を足す画面を開く（記録済みなら既存の内訳を保持したまま、何度でも追加できる）。
+     * 記録済みの枠の行をタップしたとき／行の「＋追加」ボタンをタップしたとき、両方から呼ぶ。
+     */
+    function openAddToSlot(s) {
       var parts = (log[s] && log[s].status === "recorded") ? slotParts(s) : null;
       if (parts && parts.length) {
         runBuilder(parts.map(function (p) {
@@ -2045,6 +2071,14 @@
       } else {
         setSheet(true, s);
       }
+    }
+
+    $("timeline").addEventListener("click", function (e) {
+      // 「＋追加」ボタン自身は専用の listener で処理する（stopPropagation 済み）。
+      // ここまで来た＝行本体がタップされたとき。
+      var btn = e.target.closest("[data-slot]");
+      if (!btn) return;
+      openAddToSlot(btn.dataset.slot);
     });
 
     // ------------------------------------------------------------
@@ -2616,7 +2650,8 @@
 
     // preset: 事前に積む素材。カタログ素材 {code,name,grams} と、マクロ直持ち素材
     // {name,kcal,p,c,f,grams}（手入力・写真・ラベル由来）の両方を受ける。
-    // editSlot: 指定すると「内訳を編集」＝追記でなくその枠を置き換える（⑪）。
+    // editSlot: 指定すると「食材を追加・編集」＝保存時は今の内訳（既存+今回追加ぶん）で
+    // その枠を置き換える（⑪）。何度でも開き直して追加できる。
     // editCtx: 履歴（振り返り）から過去日の記録を直すときに渡す
     //   { date, dateLabel, base(=updatedAt), onSaved }。保存はその日付でサーバに送り、
     //   今日の log は触らず onSaved で履歴を読み直す。未指定＝今日の記録（従来どおり）。
@@ -2627,7 +2662,7 @@
       openScreen(
         editCtx
           ? (editCtx.dateLabel + (editCtx.hasRecord ? "の記録を直す" : "の記録を追加"))
-          : editSlot ? "内訳を編集" : "素材から記録",
+          : editSlot ? "食材を追加・編集" : "素材から記録",
       );
       var picked = (preset || []).map(function (x) {
         return x.code
