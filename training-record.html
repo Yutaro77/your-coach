@@ -2497,15 +2497,16 @@
         });
       }
 
-      function paint(focusSearch) {
+      /**
+       * 検索欄(#pick-q)は最初に1回だけ作り、以後は絶対に作り直さない。
+       * 前は input のたびに sheet-inner を丸ごと innerHTML で再構築しており、
+       * 日本語入力（IME）の変換中に入力欄そのものが差し替わって合成状態が壊れ、
+       * 文字が重複・脱落する実機バグの原因だった（例:「けす」→「けーーすす^_^^_^」）。
+       * 対策として、入力欄を含む「殻」(paintShell)と、検索結果だけ(paintResults)を分け、
+       * キー入力のたびに動かすのは結果の一覧だけにする。
+       */
+      function paintResults() {
         var items = matches();
-        var partChips = [{ name: "すべて", v: null }]
-          .concat(CATALOG.parts.map(function (p) { return { name: p, v: p }; }))
-          .map(function (p) {
-            return '<button class="chip' + (p.v === part ? " on" : "") +
-              '" data-p="' + esc(p.v == null ? "" : p.v) + '">' + esc(p.name) + "</button>";
-          }).join("");
-
         var rows = items.length
           ? items.map(function (it) {
             return '<button class="pick-row' + (cur && it.name === cur.name ? " cur" : "") +
@@ -2525,30 +2526,54 @@
           ? '<button class="add-row" id="pick-custom">「' + esc(custom) + '」を自分の種目として追加</button>'
           : "";
 
+        $("pick-results").innerHTML = '<div class="pick-list">' + rows + "</div>" + customBlock;
+
+        $("pick-results").querySelectorAll("[data-n]").forEach(function (b) {
+          b.addEventListener("click", function () { pick(b.dataset.n); });
+        });
+        var cb = $("pick-custom");
+        if (cb) cb.addEventListener("click", function () { askMuscles(custom); });
+      }
+
+      function paintChips() {
+        Array.prototype.forEach.call($("pick-chips").children, function (b) {
+          b.classList.toggle("on", (b.dataset.p || "") === (part || ""));
+        });
+      }
+
+      function paintShell() {
+        var partChips = [{ name: "すべて", v: null }]
+          .concat(CATALOG.parts.map(function (p) { return { name: p, v: p }; }))
+          .map(function (p) {
+            return '<button class="chip' + (p.v === part ? " on" : "") +
+              '" data-p="' + esc(p.v == null ? "" : p.v) + '">' + esc(p.name) + "</button>";
+          }).join("");
+
         $("sheet-inner").innerHTML =
           '<div class="sheet-title">' + (cur ? "差し替える種目" : "追加する種目") + "</div>" +
           '<div class="sheet-sub">' + (cur ? esc(cur.name) + " と入れ替えます" : "今日のメニューの最後に足します") + "</div>" +
-          '<div class="chips">' + partChips + "</div>" +
+          '<div class="chips" id="pick-chips">' + partChips + "</div>" +
           '<input class="search" id="pick-q" placeholder="種目名で探す" value="' + esc(query) + '" autocomplete="off">' +
-          '<div class="pick-list">' + rows + "</div>" + customBlock +
+          '<div id="pick-results"></div>' +
           '<button class="act-btn" data-cancel="1">やめる</button>';
 
-        $("sheet-inner").querySelectorAll("[data-p]").forEach(function (b) {
-          b.addEventListener("click", function () {
-            part = b.dataset.p || null;
-            paint(false);
-          });
+        $("pick-chips").addEventListener("click", function (ev) {
+          var b = ev.target.closest("[data-p]");
+          if (!b) return;
+          part = b.dataset.p || null;
+          paintChips();
+          paintResults();
         });
-        var q = $("pick-q");
-        q.addEventListener("input", function () { query = q.value; paint(true); });
-        if (focusSearch) { q.focus(); q.setSelectionRange(query.length, query.length); }
 
-        $("sheet-inner").querySelectorAll("[data-n]").forEach(function (b) {
-          b.addEventListener("click", function () { pick(b.dataset.n); });
+        // #pick-q はここで一度だけ listener をつける。以後 input のたびに要素を作り直さない。
+        $("pick-q").addEventListener("input", function () {
+          query = this.value;
+          paintResults();
         });
+
         $("sheet-inner").querySelector("[data-cancel]").addEventListener("click", closeSheet);
-        var cb = $("pick-custom");
-        if (cb) cb.addEventListener("click", function () { askMuscles(custom); });
+
+        paintResults();
       }
 
       /**
@@ -2625,7 +2650,7 @@
         closeSheet();
       }
 
-      paint(false);
+      paintShell();
       openSheet(true);
     }
 
