@@ -2648,6 +2648,24 @@
       };
     }
 
+    /**
+     * 「基準量(g)あたりの栄養」を、実際の量(g)に比例させる。マイフード（保存済み食材）と
+     * 自分で入力（その場で基準量を打つ）の両方で使う共通の掛け算ロジック。
+     * baseGrams が無効なら比例できないので 0 を返す（呼び出し側が判定に使う）。
+     */
+    function scaleByBase(baseKcal, baseP, baseC, baseF, baseGrams, actualGrams) {
+      if (!(baseGrams > 0) || !(actualGrams >= 0)) {
+        return { kcal: 0, p: 0, c: 0, f: 0 };
+      }
+      var r = actualGrams / baseGrams;
+      return {
+        kcal: Math.round(baseKcal * r),
+        p: Math.round(baseP * r * 10) / 10,
+        c: Math.round(baseC * r * 10) / 10,
+        f: Math.round(baseF * r * 10) / 10
+      };
+    }
+
     // preset: 事前に積む素材。カタログ素材 {code,name,grams} と、マクロ直持ち素材
     // {name,kcal,p,c,f,grams}（手入力・写真・ラベル由来）の両方を受ける。
     // editSlot: 指定すると「食材を追加・編集」＝保存時は今の内訳（既存+今回追加ぶん）で
@@ -2803,10 +2821,19 @@
       }
 
       // --- 自分で入力（マクロ直打ち）。カタログに無い食品を名前+kcal/PCFで足す ---
+      /**
+       * 自分で入力：パッケージ等の「基準量(g)あたりの栄養」を打ち、
+       * 別途「実際に食べた量(g)」を指定すると、そのぶんに比例した値が追加される
+       * （マイフードの呼び出しと同じ計算＝scaleByBase）。基準量=実際の量にしておけば
+       * 従来どおり「打った数値そのまま」も入力できる。
+       */
       function openManual(draft) {
         sel = null;
         draft = draft || {};
         var editIndex = draft.editIndex;
+        // 編集時：保存済みの値は既に「実際に食べた量ぶん」なので、その量を基準にしておけば
+        // 開き直しても同じ数値が再現される（以後どちらも自由に変えられる）。
+        var initGrams = draft.grams > 0 ? draft.grams : 100;
         function cell(id, label, v) {
           return '<div class="fd-macro-cell"><label>' + label + '</label>' +
             '<input class="fd-in" id="' + id + '" type="number" inputmode="decimal" value="' + esc(vstr(v)) + '"></div>';
@@ -2817,51 +2844,85 @@
             '<div class="fd-qty-name">' + (editIndex != null ? "素材を編集" : "自分で入力") + '</div>' +
             '<div class="fd-qty-sub">パッケージや外食の栄養表示から。名前とkcalは必須です。</div>' +
             '<input class="fd-in name" id="m-name" placeholder="食品名（例：プロテインバー）" style="margin-top:10px" value="' + esc(vstr(draft.name)) + '">' +
+            '<div class="fd-qty-sub" style="margin-top:12px">基準量あたりの栄養（例：パッケージ表示の100gあたり）</div>' +
+            '<div class="fd-g" style="margin-top:6px"><input class="fd-in" id="m-base-grams" type="number" inputmode="numeric" placeholder="100" value="' + esc(vstr(initGrams)) + '"><span>gあたり</span></div>' +
             '<div class="fd-macro-grid">' +
               cell("m-kcal", "KCAL", draft.kcal) +
               cell("m-p", "P (g)", draft.p) +
               cell("m-c", "C (g)", draft.c) +
               cell("m-f", "F (g)", draft.f) +
             '</div>' +
-            '<div class="fd-g" style="margin-top:10px"><input class="fd-in" id="m-grams" type="number" inputmode="numeric" placeholder="量" value="' + esc(vstr(draft.grams)) + '"><span>g（任意）</span></div>' +
+            '<div class="fd-qty-sub" style="margin-top:14px">実際に食べた量</div>' +
+            '<div class="fd-g" style="margin-top:6px"><input class="fd-in" id="m-actual-grams" type="number" inputmode="numeric" value="' + esc(vstr(initGrams)) + '"><span>g</span></div>' +
+            '<div class="fd-est num" id="m-est"></div>' +
             '<label class="fd-save-row">' +
               '<input type="checkbox" id="m-save-fav">' +
-              '<span>「マイフード」に保存して次回も使う</span>' +
+              '<span>「マイフード」に保存して次回も使う（基準量あたりの値で）</span>' +
             '</label>' +
             '<button class="fd-add" id="m-add">' + (editIndex != null ? "更新する" : "追加する") + '</button>' +
           "</div>";
+
+        function paintEstimate() {
+          var baseGrams = Number($("m-base-grams").value) || 0;
+          var actualGrams = Number($("m-actual-grams").value) || 0;
+          var s = scaleByBase(
+            Number($("m-kcal").value) || 0, Number($("m-p").value) || 0,
+            Number($("m-c").value) || 0, Number($("m-f").value) || 0,
+            baseGrams, actualGrams,
+          );
+          $("m-est").textContent = (baseGrams > 0 && actualGrams > 0)
+            ? "実際に追加される量： " + s.kcal + "kcal ／ P" + s.p + " C" + s.c + " F" + s.f
+            : "基準量と実際の量を入れてね";
+        }
+
+        // 実際の量は、触るまでは基準量に追従させる（同じ数値を二度打たせない）。
+        // 一度でも実際の量を自分で変えたら、以後は基準量の変更に引きずられない。
+        var actualTouched = false;
+        $("m-base-grams").addEventListener("input", function () {
+          if (!actualTouched) $("m-actual-grams").value = this.value;
+          paintEstimate();
+        });
+        $("m-actual-grams").addEventListener("input", function () {
+          actualTouched = true;
+          paintEstimate();
+        });
+        ["m-kcal", "m-p", "m-c", "m-f"].forEach(function (id) {
+          $(id).addEventListener("input", paintEstimate);
+        });
+        paintEstimate();
+
         $("m-add").addEventListener("click", function () {
           var name = $("m-name").value.trim();
-          var kcal = Number($("m-kcal").value);
+          var baseKcal = Number($("m-kcal").value);
+          var baseGrams = Math.max(0, Math.round(Number($("m-base-grams").value) || 0));
+          var actualGrams = Math.max(0, Math.round(Number($("m-actual-grams").value) || 0));
           if (!name) { toast("食品名を入れてね"); return; }
-          if (!isFinite(kcal) || kcal < 0) { toast("kcalを数字で入れてね"); return; }
-          var grams = Math.max(0, Math.round(Number($("m-grams").value) || 0));
+          if (!isFinite(baseKcal) || baseKcal < 0) { toast("kcalを数字で入れてね"); return; }
+          if (!baseGrams) { toast("基準量(g)を入れてね"); return; }
+          if (!actualGrams) { toast("実際に食べた量(g)を入れてね"); return; }
+          var baseP = Math.max(0, Number($("m-p").value) || 0);
+          var baseC = Math.max(0, Number($("m-c").value) || 0);
+          var baseF = Math.max(0, Number($("m-f").value) || 0);
+          var s = scaleByBase(baseKcal, baseP, baseC, baseF, baseGrams, actualGrams);
           var part = {
             name: name.slice(0, 40),
-            kcal: Math.round(kcal),
-            p: Math.max(0, Number($("m-p").value) || 0),
-            c: Math.max(0, Number($("m-c").value) || 0),
-            f: Math.max(0, Number($("m-f").value) || 0),
-            grams: grams
+            kcal: s.kcal, p: s.p, c: s.c, f: s.f,
+            grams: actualGrams
           };
           if (editIndex != null) picked[editIndex] = part; else picked.push(part);
 
-          // マイフードへの保存はチェック時だけ。基準量(g)が無いと後で比例させられないので、
-          // それだけは必須にする。失敗しても今回この枠に追加すること自体は成立させる。
-          if ($("m-save-fav").checked) {
-            if (!grams) {
-              toast("保存には量(g)が必要だよ（今回はこの枠に追加だけしたよ）");
-            } else if (online) {
-              api("/liff/custom_foods", {
-                method: "POST",
-                body: JSON.stringify({
-                  name: part.name, baseGrams: grams,
-                  kcal: part.kcal, p: part.p, c: part.c, f: part.f
-                })
-              }).then(function () {
-                myFoodsCache = null; // 次に開いたときに取り直す
-              }).catch(function () { /* 保存できなくても今回の追加自体は成立している */ });
-            }
+          // マイフードへは「基準量あたりの値」を保存する（打ち直した実際の量ではなく）。
+          // これが無いと次回また違う量を食べたときに比例させられない。
+          if ($("m-save-fav").checked && online) {
+            api("/liff/custom_foods", {
+              method: "POST",
+              body: JSON.stringify({
+                name: part.name, baseGrams: baseGrams,
+                kcal: Math.round(baseKcal), p: baseP, c: baseC, f: baseF
+              })
+            }).then(function () {
+              myFoodsCache = null; // 次に開いたときに取り直す
+            }).catch(function () { /* 保存できなくても今回の追加自体は成立している */ });
           }
 
           wrap.innerHTML = "";
@@ -2940,13 +3001,7 @@
         var grams = food.baseGrams;
 
         function scaled() {
-          var r = grams / food.baseGrams;
-          return {
-            kcal: Math.round(food.kcal * r),
-            p: Math.round(food.p * r * 10) / 10,
-            c: Math.round(food.c * r * 10) / 10,
-            f: Math.round(food.f * r * 10) / 10
-          };
+          return scaleByBase(food.kcal, food.p, food.c, food.f, food.baseGrams, grams);
         }
         function paint() {
           var n = scaled();
